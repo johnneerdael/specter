@@ -1,137 +1,40 @@
-# Specter
+# Specter — preservation-first fork
 
-<p align="center">
-  <img src="./screenshots/home.png" width="19%" alt="Home">
-  <img src="./screenshots/tools.png" width="19%" alt="Tools">
-  <img src="./screenshots/target.png" width="19%" alt="App Targeting">
-  <img src="./screenshots/control.png" width="19%" alt="Control">
-  <img src="./screenshots/settings.png" width="19%" alt="Settings">
-</p>
+A safety-hardened fork of [dpejoh/Specter](https://github.com/dpejoh/specter). This fork preserves existing backend configuration, app data and recovery access. **It does not guarantee Strong Integrity, Google Wallet payments or banking access.**
 
-[![latest release](https://img.shields.io/github/v/release/dpejoh/specter?label=Release&logo=github)](https://github.com/dpejoh/specter/releases/latest)
-[![CI](https://github.com/dpejoh/specter/actions/workflows/build-test.yml/badge.svg)](https://github.com/dpejoh/specter/actions/workflows/build-test.yml)
+[Compatibility, supported backend/PIF differences and explicit recommendations](docs/COMPATIBILITY.md) · [Hardening contract and unsupported operations](docs/HARDENING.md)
 
-Getting strong integrity, TEESimulator management, detection solve. Clean, focused, no bloat.
+## Safe starting point
 
-[Download](https://github.com/dpejoh/specter/releases/latest)
+1. Verify private backups and app-native recovery options before modifying the phone. Root backups cannot guarantee migration of bank sessions or hardware-bound keys.
+2. Retain one existing attestation backend and one PIF. Specter does not automatically install, uninstall or disable them. Multiple enabled backends require inspection and explicit selection.
+3. Install only an artifact from a successful fork Actions run at its exact commit, through the root manager. Reboot only after backup completion and explicit approval. Direct adb replacement and hot-apply are blocked.
+4. First boot snapshots/inspects only; it does not download keyboxes, run targeting or alter patch levels. Mutating defaults are off. Existing explicit preferences survive, but unsupported actions stay blocked.
+5. Use backend/PIF native tools for key material and fingerprint management. Refer to the compatibility matrix: fixture-tested support is not device/payment validation.
 
-## Background
+## Deliberate limitations
 
-Specter is a complete rewrite of what I originally built as Yurikey.
+Keybox installation, automatic restoration, HMA replacement, full/bulk data cleanup, Widevine/vendor provisioning, broad property cleanup, live OMK/INI writes and automatic denylist/debugging changes are refused. This is intentional protection, not a claim these features were validated. JSON/TXT editors are opt-in, preserve supported structures and refuse unsupported input. Default ownership remains with existing modules.
 
-## Support
+Uninstall retains snapshots/configuration and unresolved rollback journals. It restores only property values still owned by Specter. No RKPD or keystore data is cleared; no simulator keys are regenerated. Changing a manager is not demonstrated to fix a hardware provisioning failure.
 
-- Telegram: [Channel](https://t.me/dpejoh) · [Group](https://t.me/dpejoh0)
-- Ko-fi: [ko-fi.com/dpejoh](https://ko-fi.com/dpejoh)
-- BTC: bc1qfy4vfstns4aqhvck66x0r53n3hfkkzhwkt7zpw
-- ETC: 0x895762C0Fd2BeF54EE3cD478Fc03212aeA673a68
+## Build and validation
 
-## Quick start
-
-1. Install [Tricky Store](https://github.com/5ec1cff/TrickyStore/releases/latest) /
-   [TEESimulator](https://github.com/JingMatrix/TEESimulator/releases/latest) /
-   [TEESimulator-RS](https://github.com/Enginex0/TEESimulator-RS/releases/latest)
-   (Specter auto-installs TEESimulator-RS if none found — skip if using OhMyKeymint)
-2. Install [Play Integrity Inject](https://github.com/KOWX712/PlayIntegrityFix/releases/latest)
-   or [Play Integrity Fork](https://github.com/osm0sis/PlayIntegrityFork/releases/latest)
-3. Install Specter via Magisk / KernelSU / APatch
-4. Reboot. First-boot runs backup, target, security patch, keybox.
-5. Open the WebUI
-
-## Features
-
-- **Keybox**: multi-source catalog, custom keybox, Google revocation, backup/restore
-- **Auto Target**: inotify + polling for new apps
-- **App Targeting**: per-app states, suffixes, blacklist
-- **Security Patch**: live fetch with offline fallback
-- **ROM Fingerprint**: cleans custom ROM props and prefixes
-- **ADB Disabler**: dev options, USB debugging, OEM unlock
-- **PIF**: auto-detect variant, fetch fingerprint, block spoof engines
-- **GMS Kill**: force-stops DroidGuard/GMS, clears Play Store
-- **Module Configs**: HMA-OSS/HMA/HMAL, Zygisk Next
-- **Detection Cleanup**: removes detector logs, temp dirs, caches
-- **Widevine L1**: attestation keys via KmInstallKeybox
-- **Conflict Resolution**: 8 modules — aggressive disabled, passive coexists, TEESimulator WebUI feature ownership
-- **Scheduler**: periodic keybox info, auto-target, autopif
-- **First-Boot**: backup originals, run full pipeline once
-
-## Requirements
-
-- Root access (Magisk / KernelSU / APatch)
-- [Tricky Store](https://github.com/5ec1cff/TrickyStore/releases/latest) /
-  [TEESimulator](https://github.com/JingMatrix/TEESimulator/releases/latest) /
-  [TEESimulator-RS](https://github.com/Enginex0/TEESimulator-RS/releases/latest) /
-  or OhMyKeymint
-  (Specter auto-installs TEESimulator-RS if none detected)
-- [Play Integrity Inject](https://github.com/KOWX712/PlayIntegrityFix/releases/latest)
-  or [Play Integrity Fork](https://github.com/osm0sis/PlayIntegrityFork/releases/latest)
-
-## Build
-
-```bash
-git clone https://github.com/dpejoh/specter
-cd specter
-npm install
+```sh
+npm ci
+npm audit
+npx tsc --noEmit
+bash tests/run.sh
+npm test
 npm run build
 ```
 
-Output: `Specter-v{version}.zip`
+Output: `Specter-v{version}-g{commit}.zip`. Packaging works on macOS and Linux. Build/release workflows enforce test failures; Telegram notifications are disabled unless `ENABLE_TELEGRAM_NOTIFICATIONS=true` is explicitly set. Upstream module auto-update is disabled to preserve fork hardening.
 
-### Testing
+The shell tests use Android mocks and offline fixtures. CI does not establish SELinux/watcher compatibility, real attestation, application session preservation or payment eligibility. The exact phone configuration must be independently tested before a third-party combination is called device-validated.
 
-```bash
-bash tests/run.sh          # Shell tests. 6 files, 97 assertions.
-npm test                   # TS tests. 10 files, 92 tests (vitest + happy-dom).
-npx tsc --noEmit           # TypeScript strict check
-```
+## Credits and license
 
-### CI
+Original Specter/Yurikey by [dpejoh](https://github.com/dpejoh). Backend/PIF projects retain their own authorship and licenses: [Tricky Store](https://github.com/5ec1cff/TrickyStore), [JingMatrix TEESimulator](https://github.com/JingMatrix/TEESimulator), [TEESimulator-RS](https://github.com/Enginex0/TEESimulator-RS), [OhMyKeymint](https://github.com/qwq233/OhMyKeymint), [KOWX712 PIF](https://github.com/KOWX712/PlayIntegrityFix), [osm0sis PlayIntegrityFork](https://github.com/osm0sis/PlayIntegrityFork). See [LICENSE](LICENSE).
 
-- TypeScript strict, ShellCheck (warning), shell tests, TS tests
-- Module structure verification
-- No hardcoded `/data/adb/modules/Specter` paths in lib/ or features/
-- No `su -c` in feature scripts
-
-## Legal
-
-```
-FOR EDUCATIONAL PURPOSES ONLY.
-THE DEVELOPER DOES NOT CONDONE ILLEGAL ACTIVITIES INCLUDING BYPASSING DRM, VIOLATING TERMS OF SERVICE, OR COMMITTING FRAUD.
-USERS ARE SOLELY RESPONSIBLE FOR COMPLYING WITH APPLICABLE LAWS.
-```
-
-## Warning
-
-```
-SPECTER IS PROGRAMMED NOT TO CAUSE PROBLEMS, BUT AN UNLOCKED PHONE ALWAYS COMES WITH RISKS.
-NOTHING IS 100% GUARANTEED. USE AT YOUR OWN RISK.
-YOUR WARRANTY MAY BE VOIDED, APPS MAY BREAK, AND ACCOUNT BANS ARE POSSIBLE.
-ALWAYS MAINTAIN BACKUPS OF IMPORTANT DATA.
-```
-
-## Translations
-
-The WebUI is translated into Arabic, Spanish, French, Hungarian, Indonesian, Polish, Russian, Turkish, and Chinese (mostly AI-generated. Human review welcome).
-
-To contribute translations:
-- **Preferred**: Join the [Crowdin project](https://crowdin.com/project/specter-module) — web UI, no git needed
-- **Alternative**: Edit the JSON files in `src/webroot/lang/` and submit a PR
-
-Automation:
-- Pushing changes to `src/webroot/lang/source/string.json` on `main` uploads the new keys to Crowdin
-- Every Monday a workflow downloads finished translations and opens a PR (`i18n: translation updates from Crowdin`)
-- Required repo secrets: `CROWDIN_PROJECT_ID`, `CROWDIN_PERSONAL_TOKEN`
-
-Each `*.json` file is validated against `source/string.json` in CI (`npm test`). New keys without translations fall back to English.
-
-## Thanks
-
-- [chiteroman](https://github.com/chiteroman/PlayIntegrityFix), [KOWX712](https://github.com/KOWX712/PlayIntegrityFix) and [osm0sis](https://github.com/osm0sis/PlayIntegrityFork). PIF and forks.
-- [5ec1cff](https://github.com/5ec1cff/TrickyStore), [JingMatrix](https://github.com/JingMatrix/TEESimulator), [Enginex0](https://github.com/Enginex0/TEESimulator-RS). Tricky Store and forks.
-- [KOWX712](https://github.com/KOWX712/Tricky-Addon-Update-Target-List), [Enginex0](https://github.com/Enginex0/tricky-addon-enhanced). Tricky Store Addon.
-- [eltavine](https://github.com/eltavine/Duck-Detector-Refactoring). Duck Detector.
-- [Citra-Standalone](https://github.com/Citra-Standalone/TSupport-Advance). TSupport-Advance.
-
-## License
-
-GNU GPL v3.0
+Use only lawful device-owned configuration/key material. Do not publish private keyboxes, app databases, tokens, backups or credential exports in issues or CI artifacts.

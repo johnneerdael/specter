@@ -17,6 +17,10 @@ import { wireActions, buildFriendlyNames } from './actions.js';
 
 const t = (key: string, fallback: string): string => getTranslation(key) || fallback;
 
+window.addEventListener('specter-config-error', (event: Event) => {
+  showToast(`Configuration could not be saved: ${(event as CustomEvent<string>).detail}`, { type: 'error', icon: 'error' });
+});
+
 let _homeInitialized = false;
 
 document.addEventListener('DOMContentLoaded', async () => {

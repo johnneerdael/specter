@@ -20,6 +20,11 @@ log_i "AUTO_TARGET" "Scanning for new packages"
 ksm_available || { log_d "AUTO_TARGET" "no keystore manager, skipping"; exit 0; }
 [ -f "$KSM_TARGETS" ] || { log_w "AUTO_TARGET" "target list missing, skipping"; exit 0; }
 
+if [ "${SPECTER_LOCK_HELD:-}" != "$KSM" ]; then
+  specter_backend_edit target sh "$0" "$@"
+  exit $?
+fi
+
 ksm_lock_targets || { log_e "AUTO_TARGET" "failed to lock target list"; exit 1; }
 
 pkgs=$(pm list packages -3 2>/dev/null) || { log_e "AUTO_TARGET" "pm list packages failed"; exit 1; }

@@ -1,3 +1,4 @@
+import { cfgFlush, cfgGet } from './cfg.js';
 import { spawnScript } from './bridge.js';
 import { appendToOutput } from './terminal.js';
 import { showToast } from './toast.js';
@@ -38,6 +39,15 @@ async function confirmDestructive(friendlyName: string, msgKey?: string): Promis
 export async function runAction(scriptName: string) {
   const i18nKey = getFriendlyName(scriptName);
   const friendlyName = getTranslation(i18nKey) || i18nKey;
+  try { await cfgFlush(); } catch (error) {
+    showToast(`Configuration was not saved; action blocked: ${String(error)}`, { type: 'error', icon: 'error' });
+    throw error;
+  }
+  const args: string[] = [];
+  if (scriptName === 'gms.sh' && await cfgGet('toggle_action_gms_clear_data', '0') === '1') {
+    if (!await confirmDestructive('Clear Play Store app data')) return;
+    args.push('--confirmed');
+  }
   const lines: string[] = [];
   appendToOutput(`> ${friendlyName}`);
   const dialog = document.getElementById('progress-dialog') as MdDialog | null;
@@ -48,7 +58,7 @@ export async function runAction(scriptName: string) {
   if (dialog) dialog.show();
 
   return new Promise<void>(resolve => {
-    const child = spawnScript(scriptName, 'feature');
+    const child = spawnScript(scriptName, 'feature', args);
     child.stdout.on('data', (line: string) => {
       appendToOutput(line);
       lines.push(line);

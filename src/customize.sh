@@ -3,8 +3,7 @@
 MODDIR="$MODPATH"
 . "$MODPATH/lib/common.sh"
 
-# Clean up old uppercase paths (module id + data dir)
-rm -rf /data/adb/modules/Specter /data/adb/Specter
+# Legacy data belongs to the owner; migration must never delete it implicitly.
 
 ui_print ""
 ui_print " ____                  _            "
@@ -63,22 +62,8 @@ ui_print ""
 
 unset _zygisk_name
 
-ksm_enforce_singleton | while IFS= read -r _ksm_id; do
-  [ -n "$_ksm_id" ] && ui_print "- Disabled $_ksm_id (keystore conflict)"
-done
-
-if ! module_enabled teesim >/dev/null \
-  && ! module_enabled tricky_store >/dev/null \
-  && ! module_enabled "${OMK_MODULE##*/}" >/dev/null; then
-  ui_print "- Installing TEESimulator-RS.."
-  if install_module_from_github "Enginex0/TEESimulator-RS" "TEESimulator-RS"; then
-    ui_print "- TEESimulator-RS installed"
-  else
-    ui_print "- TEESimulator-RS not available"
-  fi
-else
-  ui_print "- Keystore backend present, skipping TEESimulator-RS"
-fi
+ksm_enforce_singleton
+ui_print "- Existing backends retained; no automatic backend installation"
 unset _ts_name _teesim_name _omk_name
 
 # Mark first-boot setup as pending (runs once after reboot in service.sh)
@@ -118,15 +103,14 @@ unset _arch _src _f
 mkdir -p "$SPECTER_DIR/config"
 cp "$MODPATH/config/conflicts.txt" "$SPECTER_DIR/config/conflicts.txt" 2>/dev/null || true
 
-# Hot install — ksu-only, update-already-present: move staging into the
-# live dir and re-apply without a reboot. no-op on apatch/magisk/first install.
+# Hot-apply is refused; leave installation staging to the root manager.
 . "$MODPATH/lib/hotinstall.sh"
 specter_hot_install
 
-# The "next reboot" message only applies when we didn't just live-apply.
+# No live apply; first boot snapshots/inspects only.
 if [ -z "${_specter_hot_done:-}" ]; then
   ui_print ""
-  ui_print " >> First-boot setup: backup, target, security patch, keybox (next reboot)"
+  ui_print " >> First boot: preservation snapshot/inspection only (next reboot)"
 fi
 
 return 0

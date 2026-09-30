@@ -34,7 +34,7 @@ detect_root_solution() {
 }
 
 _pif_prop() {
-  module_detect "playintegrityfix"
+  module_enabled "playintegrityfix"
 }
 
 _zygisk_variant() {
@@ -62,4 +62,3 @@ _omk_prop() {
 _teesim_prop() {
   module_detect "teesim"
 }
-

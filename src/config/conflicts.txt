@@ -1,6 +1,6 @@
 # id|display_name|type|features|scripts
 #
-# type: aggressive (uninstall + desc warning)
+# type: aggressive (diagnostic warning only; never uninstall)
 #       moderate   (disable scripts, no desc warning)
 #       passive    (user toggles in web UI)
 
@@ -8,13 +8,14 @@
 zygisk_nohello|NoHello|passive||/data/adb/modules/zygisk_nohello/service.sh
 treat_wheel|TreatWheel|passive|prop_handler|/data/adb/modules/treat_wheel/service.sh
 brene|.BRENE|passive|prop_handler|/data/adb/modules/brene/service.sh,/data/adb/modules/brene/post-fs-data.sh,/data/adb/modules/brene/boot-completed.sh
-teesim|TEESimulator WebUI|passive|security_patch,teesim_mode|
+teesim|TEESimulator WebUI|passive|security_patch,teesim_mode,target,keybox,boot_state_props,boot_hash|
+tricky_store|Tricky Store / TEESimulator-RS|passive|security_patch,target,keybox,boot_hash|
 
 # --- aggressive ---
 tsupport-advance|TSupport-Advance|aggressive|security_patch,target|/data/adb/modules/tsupport-advance/post-fs-data.sh,/data/adb/modules/tsupport-advance/service.sh
 sensitive_props|Sensitive Props|aggressive||/data/adb/modules/sensitive_props/service.sh
 Yurikey|Yurikey Manager|aggressive|security_patch|/data/adb/modules/Yurikey/service.sh
-integritybox|Integrity Box|aggressive|security_patch,target|/data/adb/modules/playintegrityfix/service.sh
+integritybox|Integrity Box|aggressive|security_patch,target,keybox,pif,prop_handler,boot_state_props,boot_hash,pif_props,rom_fingerprint|/data/adb/modules/playintegrityfix/service.sh
 
 # --- moderate ---
 TA_utl|Tricky Addon - Update Target List|moderate|boot_hash|/data/adb/modules/TA_utl/prop.sh

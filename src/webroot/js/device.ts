@@ -177,8 +177,11 @@ export function applyKeyboxStatus(data: KeyboxInfoJson) {
   } else if (data.softbanned) {
     statusEl.textContent = getTranslation('custom_kb_softbanned') || 'Softbanned';
     statusEl.className = 'kb-hero-status-text kb-hero-status-text--softbanned';
+  } else if (data.revoked !== false) {
+    statusEl.textContent = 'Unknown — revocation not verified';
+    statusEl.className = 'kb-hero-status-text kb-hero-status-text--softbanned';
   } else {
-    statusEl.textContent = getTranslation('custom_kb_active') || 'Active';
+    statusEl.textContent = 'Checked-not-listed (first certificate)';
     statusEl.className = 'kb-hero-status-text kb-hero-status-text--active';
   }
 }

@@ -10,62 +10,41 @@ decode_keybox_blob() {
   unset _dkb_in _dkb_out _dkb_tmp
 }
 
-# shellcheck disable=SC3057,SC3052
-_parse_serial() {
-  _h="$1"
-  case "${_h:0:1}" in "") return 1 ;; esac 2>/dev/null || { log_w "KEYBOX" "Shell lacks string slicing, skipping serial decode"; return 1; }
-  case "$_h" in 30*) _h="${_h#30}" ;; *) return 1 ;; esac
-  _l_hex="${_h:0:2}" _l_dec=$((16#$_l_hex))
-  [ $_l_dec -ge 128 ] && _h="${_h:2 + ($_l_dec - 128) * 2}" || _h="${_h:2}"
+# Full DER decoding is delegated to a real X.509 parser. Unknown is safe.
+decode_keybox_serial() (
+  command -v openssl >/dev/null 2>&1 || return 1
+  umask 077
+  _dks_dir=$(mktemp -d) || return 1
+  trap 'rm -rf "$_dks_dir"' 0
+  sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p; /-----END CERTIFICATE-----/q' "$1" > "$_dks_dir/cert.pem"
+  _dks_out=$(openssl x509 -in "$_dks_dir/cert.pem" -noout -serial 2>/dev/null) || return 1
+  _dks_serial=$(printf '%s' "$_dks_out" | sed 's/^serial=//' | tr 'A-F' 'a-f')
+  case "$_dks_serial" in ''|*[!0-9a-f]*) return 1 ;; esac
+  printf '%s\n' "$_dks_serial"
+)
 
-  case "$_h" in 30*) _h="${_h#30}" ;; *) return 1 ;; esac
-  _l_hex="${_h:0:2}" _l_dec=$((16#$_l_hex))
-  [ $_l_dec -ge 128 ] && _h="${_h:2 + ($_l_dec - 128) * 2}" || _h="${_h:2}"
+# 0=listed/revoked, 1=checked and absent, 2=unknown. Never treat errors as clear.
+check_google_revocation() (
+  case "$1" in ''|*[!0-9a-fA-F]*) return 2 ;; esac
+  _gr_serial=$(printf '%s' "$1" | tr 'A-F' 'a-f' | sed 's/^0*//')
+  [ -n "$_gr_serial" ] || _gr_serial=0
+  case "$_gr_serial" in *[!0-9a-f]*) return 2 ;; esac
+  _gr_resp=$(download "$GOOGLE_REVOCATION_URL" 2>/dev/null) || return 2
+  [ -n "$_gr_resp" ] || return 2
+  _gr_nodes=$(printf '%s' "$_gr_resp" | awk -f "$SPECTER_JSON_AWK") || return 2
+  printf '%s\n' "$_gr_nodes" | awk -F '\t' -v serial="$_gr_serial" '
+    $1 == "/entries" && $2 == "object" { valid=1 }
+    $1 ~ /^\/entries\/[0-9a-fA-F]+$/ {
+      key=tolower(substr($1,10)); sub(/^0+/,"",key); if(key=="") key="0"
+      if(key==serial) revoked=1
+    }
+    END { if(!valid) exit 2; exit (revoked ? 0 : 1) }
+  '
+)
 
-  case "$_h" in
-    a0*)
-      _ctx_len_hex="${_h:2:2}"
-      _ctx_len=$((16#$_ctx_len_hex))
-      _h="${_h:4 + _ctx_len * 2}"
-      ;;
-  esac
-
-  case "$_h" in 02*) _h="${_h#02}" ;; *) return 1 ;; esac
-  _l_hex="${_h:0:2}" _l_dec=$((16#$_l_hex))
-  if [ $_l_dec -ge 128 ]; then
-    _n=$((_l_dec - 128))
-    _sl=$((16#${_h:2:_n * 2}))
-    _serial_hex="${_h:2 + _n * 2:$_sl * 2}"
-  else
-    _serial_hex="${_h:2:$_l_dec * 2}"
-  fi
-
-  _serial=$(echo "$_serial_hex" | sed 's/^0*//')
-  [ -z "$_serial" ] && _serial="0"
-  return 0
-}
-
-decode_keybox_serial() {
-  _b64=$(sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p; /-----END CERTIFICATE-----/q' "$1" | grep -v 'CERTIFICATE' | sed 's/^[[:space:]]*//' | tr -d '\n')
-  [ -z "$_b64" ] && return 1
-  _hex=$(echo "$_b64" | base64 -d 2>/dev/null | od -v -tx1 | awk 'BEGIN{ORS=""} {for(i=2;i<=NF;i++) printf "%s", $i}')
-  [ -z "$_hex" ] && return 1
-  _parse_serial "$_hex" || return 1
-  echo "$_serial"
-}
-
-check_google_revocation() {
-  _gr_serial="$1"
-  _gr_resp=$(download "$GOOGLE_REVOCATION_URL" 2>/dev/null)
-  [ -z "$_gr_resp" ] && return 1
-
-  echo "$_gr_resp" | grep -q "\"$_gr_serial\"" && return 0
-
-  if command -v bc >/dev/null 2>&1; then
-    _gr_dec=$(echo "ibase=16; $(echo "$_gr_serial" | tr 'a-f' 'A-F')" | bc 2>/dev/null)
-    [ -n "$_gr_dec" ] && echo "$_gr_resp" | grep -q "\"$_gr_dec\"" && return 0
-  fi
-
+# No weak marker/serial check is advertised as cryptographic validation.
+keybox_validate_candidate() {
+  log_e "KEYBOX" "Complete private-key/XML/chain validation unavailable; refusing candidate"
   return 1
 }
 

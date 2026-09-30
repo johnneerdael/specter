@@ -4,31 +4,14 @@ CONFLICT_LIST="$CONFIG_DIR/conflicts.txt"
 
 _conflict_detect() {
   case "$1" in
-    integritybox) [ -d "$MODULES_BASE/playintegrityfix" ] && [ -d "/data/adb/Box-Brain" ] ;;
-    *) [ -d "$MODULES_BASE/$1" ] || [ -d "${MODULES_BASE}_update/$1" ] || [ -d "$MODULES_BASE/.$1" ] || [ -d "${MODULES_BASE}_update/.$1" ] ;;
+    integritybox) module_enabled playintegrityfix >/dev/null && [ -d "/data/adb/Box-Brain" ] ;;
+    *) module_enabled "$1" >/dev/null ;;
   esac
 }
 
-_conflict_rename_bak() {
-  [ -f "$1" ] && [ ! -f "$1.bak" ] && mv "$1" "$1.bak" 2>/dev/null && grep -qxF "$1" "$CONFLICT_BACKUP_FILE" 2>/dev/null || echo "$1" >> "$CONFLICT_BACKUP_FILE" 2>/dev/null || true
-}
-
-_conflict_restore_bak() {
-  [ -f "$1.bak" ] && mv "$1.bak" "$1" 2>/dev/null || true
-}
-
 _conflict_uninstall() {
-  _cu_id="$1" _cu_name="$2"
-  _cu_dir="$MODULES_BASE/$_cu_id"
-  [ "$_cu_id" = "integritybox" ] && _cu_dir="$MODULES_BASE/playintegrityfix"
-  _cu_dir_upd="${MODULES_BASE}_update/${_cu_dir##*/}"
-  for _cu_path in "$_cu_dir" "$_cu_dir_upd"; do
-    [ -d "$_cu_path" ] || continue
-    [ -f "$_cu_path/uninstall.sh" ] && sh "$_cu_path/uninstall.sh" 2>/dev/null || true
-    rm -rf "$_cu_path"
-  done
-  [ "$_cu_id" = "integritybox" ] && [ -d "/data/adb/Box-Brain" ] && rm -rf "/data/adb/Box-Brain"
-  sed -i "\|/$_cu_id/|d" "$CONFLICT_BACKUP_FILE" 2>/dev/null || true
+  log_w "CONFLICT" "Refusing automatic uninstall of $1; remove conflicts manually after backup"
+  return 1
 }
 
 _conflict_toggle_key() {
@@ -46,26 +29,13 @@ _feature_should_run() {
   fi
 }
 
-_apply_scripts() {
-  _as_scripts="$1" _as_choice="$2"
-  _as_old_ifs="$IFS"; IFS=','
-  for _as_script in $_as_scripts; do
-    [ -z "$_as_script" ] && continue
-    [ "$_as_choice" = "priority_module" ] && _conflict_restore_bak "$_as_script" || _conflict_rename_bak "$_as_script"
-  done
-  IFS="$_as_old_ifs"
-}
-
 _resolve_aggressive() {
-  _conflict_uninstall "$1" "$2"
-  log_i "CONFLICT" "$2: 100% overlap, uninstalled"
-  cfg_set "conflict_$1" "priority_specter"
+  _resolve_passive "$@"
+  log_w "CONFLICT" "$2 overlaps; existing module retained"
 }
 
 _resolve_moderate() {
-  _apply_scripts "$3" "priority_specter"
-  log_i "CONFLICT" "$2: overlap, disabled, Specter covers all"
-  cfg_set "conflict_$1" "priority_specter"
+  _resolve_passive "$@"
 }
 
 _resolve_passive() {
@@ -101,21 +71,12 @@ resolve_conflicts() {
 
 _conflict_claimed() {
   _cc_feature="$1"
-
+  [ -f "$CONFLICT_LIST" ] || return 1
   while IFS='|' read -r _cc_id _cc_name _cc_type _cc_features _cc_scripts; do
     case "$_cc_id" in ''|\#*) continue ;; esac
-    [ "$_cc_type" = "passive" ] && continue
     _conflict_detect "$_cc_id" || continue
     case ",$_cc_features," in *,"$_cc_feature",*) ;; *) continue ;; esac
-    [ "$(cfg_get "conflict_$_cc_id" "priority_specter")" = "priority_specter" ] && return 1
-  done < "$CONFLICT_LIST"
-
-  while IFS='|' read -r _cc_id _cc_name _cc_type _cc_features _cc_scripts; do
-    case "$_cc_id" in ''|\#*) continue ;; esac
-    [ "$_cc_type" != "passive" ] && continue
-    _conflict_detect "$_cc_id" || continue
-    case ",$_cc_features," in *,"$_cc_feature",*) ;; *) continue ;; esac
-    [ "$(cfg_get "conflict_$_cc_id" "priority_module")" = "priority_module" ] && return 0
+    [ "$(cfg_get "conflict_${_cc_id}_${_cc_feature}" "$(cfg_get "conflict_$_cc_id" "priority_module")")" = "priority_module" ] && return 0
   done < "$CONFLICT_LIST"
 
   return 1
@@ -124,12 +85,12 @@ _conflict_claimed() {
 conflict_status_json() {
   _cs_first=1
   printf '['
+  [ -f "$CONFLICT_LIST" ] || { printf ']'; return 0; }
   while IFS='|' read -r _cs_id _cs_name _cs_type _cs_features _cs_scripts; do
     case "$_cs_id" in ''|\#*) continue ;; esac
-    [ "$_cs_type" = "passive" ] || continue
     _conflict_detect "$_cs_id" || continue
     [ "$_cs_first" -eq 0 ] && printf ',' || _cs_first=0
-    _cs_choice=$(cfg_get "conflict_$_cs_id" "priority_specter")
+    _cs_choice=$(cfg_get "conflict_$_cs_id" "priority_module")
     printf '{"key":"%s","friendlyName":"%s","detected":true,"prioritySpecter":%s,"type":"%s","features":"%s"}' \
       "$_cs_id" "$_cs_name" "$([ "$_cs_choice" = "priority_specter" ] && echo true || echo false)" "$_cs_type" "$_cs_features"
   done < "$CONFLICT_LIST"
@@ -138,7 +99,17 @@ conflict_status_json() {
 
 conflict_set_choice() {
   case "$2" in priority_specter|priority_module) ;; *) return 1 ;; esac
-  cfg_set "conflict_$1" "$2"
+  [ -f "$CONFLICT_LIST" ] || return 1
+  awk -F'|' -v id="$1" '$1 == id { found=1 } END { exit !found }' "$CONFLICT_LIST" || return 1
+  cfg_set "conflict_$1" "$2" || return 1
+  _choice_id="$1"; _choice_value="$2"
+  _choice_features=$(awk -F'|' -v id="$_choice_id" '$1==id {print $4}' "$CONFLICT_LIST")
+  _choice_ifs="$IFS"; IFS=','
+  for _choice_feature in $_choice_features; do
+    [ -n "$_choice_feature" ] || continue
+    cfg_set "conflict_${_choice_id}_$_choice_feature" "$_choice_value" || { IFS="$_choice_ifs"; return 1; }
+  done
+  IFS="$_choice_ifs"
 }
 
 conflict_resolve_for_feature() {
@@ -146,8 +117,9 @@ conflict_resolve_for_feature() {
   while IFS='|' read -r _crf_id _crf_name _crf_type _crf_features _crf_scripts; do
     case "$_crf_id" in ''|\#*) continue ;; esac
     _conflict_detect "$_crf_id" || continue
-    [ "$(cfg_get "conflict_$_crf_id" priority_specter)" = "priority_module" ] || continue
-    cfg_set "conflict_$_crf_id" "priority_specter"
+    case ",$_crf_features," in *,"$1",*) ;; *) continue ;; esac
+    [ "$(cfg_get "conflict_$_crf_id" priority_module)" = "priority_module" ] || continue
+    cfg_set "conflict_${_crf_id}_$1" "priority_specter"
   done < "$CONFLICT_LIST"
   cfg_set "$_crf_toggle_key" "1"
 }

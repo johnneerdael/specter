@@ -2,6 +2,7 @@ import '@material/web/labs/segmentedbuttonset/outlined-segmented-button-set.js';
 import '@material/web/labs/segmentedbutton/outlined-segmented-button.js';
 import '@material/web/switch/switch.js';
 import { exec, getModuleDir, getDataDir } from './bridge.js';
+import { writeTargetList, writeBlacklist } from './target-persistence.js';
 import { cfgGet } from './cfg.js';
 import { shellEscape, fetchJson } from './utils.js';
 import { showToast } from './toast.js';
@@ -63,18 +64,6 @@ async function readTargetList(): Promise<string> {
   const { stdout, code, stderr } = await exec(`sh ${targetScript()} --list-raw`);
   if (code !== 0) throw new Error(stderr || 'failed to read target list');
   return stdout || '';
-}
-
-async function writeTargetList(content: string): Promise<void> {
-  const staging = `${specterDir()}/.target_staging`;
-  const encoded = await exec(`printf '%s' ${shellEscape(content)} | base64 -w0`);
-  const written = await exec(
-    `mkdir -p ${specterDir()} && printf '%s' "${encoded.stdout || ''}" | base64 -d > ${shellEscape(staging)}`
-  );
-  if (written.code !== 0) throw new Error(written.stderr || 'failed to stage target list');
-  const committed = await exec(`sh ${targetScript()} --set ${shellEscape(staging)}`);
-  if (committed.code !== 0) throw new Error(committed.stderr || 'failed to commit target list');
-  await exec(`rm -f ${shellEscape(staging)}`);
 }
 
 function t(key: string, fallback: string): string {
@@ -830,10 +819,7 @@ export async function openTargetAppsManager() {
         const bl = apps.filter(a => a.state === 'blacklisted').map(a => a.packageName).sort();
         const content = bl.join('\n');
         try {
-          const result = await exec(`printf '%s' ${shellEscape(content)} | base64 -w0`);
-          const b64 = result.stdout || '';
-          await exec(`mkdir -p ${specterDir()} && printf '%s' "${b64}" | base64 -d > ${specterDir()}/blacklist.txt`);
-          await exec(`mkdir -p ${specterDir()} && touch ${specterDir()}/blacklist_enabled`);
+          await writeBlacklist(content);
           appendToOutput(`[TARGET] Wrote ${bl.length} entries to blacklist.txt`);
           showToast(t('toast_blacklist_saved', 'Blacklist saved'), { icon: 'check_circle', type: 'success', autoCloseDelay: 2500 });
         } catch (e) {

@@ -41,7 +41,7 @@ FALLBACK_KEYBOXES="Yuri/8"
 # -- Package lists --
 GMS_APPS="com.android.vending com.google.android.gsf com.google.android.gms com.google.android.contactkeys com.google.android.ims com.google.android.safetycore com.google.android.apps.walletnfcrel com.google.android.apps.nbu.paisa.user"
 FIXED_TARGETS="android $GMS_APPS"
-GMS_KILL_LIST="$GMS_APPS com.google.android.gms.persistent com.google.android.gms.unstable com.google.android.rkpdapp com.android.chrome com.google.android.googlequicksearchbox"
+GMS_KILL_LIST="$GMS_APPS com.google.android.gms.persistent com.google.android.gms.unstable com.android.chrome com.google.android.googlequicksearchbox"
 TOOL_APPS="bin.mt.plus bin.mt.plus.canary com.omarea.vtools moe.shizuku.privileged.api com.estrongs.android.pop com.coolapk.market com.sevtinge.hyperceiler com.coderstory.toolkit"
 
 # -- Decode substitution --
@@ -56,8 +56,12 @@ decode_substitution() {
 cfg_get() {
   _cg_key="$1" _cg_default="$2"
   _cg_val=$(cat "$CONFIG_DIR/val/$_cg_key.val" 2>/dev/null || true)
+  # Registered defaults are authoritative even when an old caller supplies 1.
+  for _cg_pair in $SPECTER_TOGGLE_DEFAULTS; do
+    [ "${_cg_pair%%:*}" = "$_cg_key" ] && _cg_default="${_cg_pair#*:}" && break
+  done
   printf '%s' "${_cg_val:-$_cg_default}"
-  unset _cg_key _cg_default _cg_val
+  unset _cg_key _cg_default _cg_val _cg_pair
 }
 
 cfg_set() {
@@ -67,20 +71,21 @@ cfg_set() {
 
 # gms_clear_data:0 — pm clear wipes Play purchase/login (biometric prompt on next open).
 SPECTER_TOGGLE_DEFAULTS="
-toggle_prop_handler:1 toggle_boot_state_props:1 toggle_bootmode_spoof:1
+toggle_prop_handler:0 toggle_boot_state_props:0 toggle_bootmode_spoof:0
 toggle_adb_disabler:0
 toggle_adb_disabler_dev_options:1 toggle_adb_disabler_usb_debug:1
 toggle_adb_disabler_oem_unlock:1
-toggle_rom_fingerprint:1 toggle_custom_rom_props:0 toggle_pif_props:1
+toggle_rom_fingerprint:0 toggle_custom_rom_props:0 toggle_pif_props:0
 rom_fingerprint_pif:1
 toggle_rom_fingerprint_names:1 toggle_rom_fingerprint_prefix:1
 toggle_rom_fingerprint_build_type:1
-toggle_action_gms:1 toggle_action_target:1
-toggle_action_security_patch:0 toggle_action_pif:1 toggle_action_keybox:1
+toggle_action_gms:0 toggle_action_target:0
+toggle_action_security_patch:0 toggle_action_pif:0 toggle_action_keybox:0
 toggle_action_security_patch_device:1 toggle_action_security_patch_bulletin:1
 toggle_action_security_patch_synthetic:1
-toggle_action_gms_force_stop:1 toggle_action_gms_clear_data:0
-toggle_auto_target:1 toggle_keybox_info:1 toggle_autopif:0 toggle_autokeybox:0
+toggle_action_gms_force_stop:0 toggle_action_gms_clear_data:0
+toggle_auto_target:0 toggle_keybox_info:1 toggle_autopif:0 toggle_autokeybox:0
+toggle_scheduler:0 toggle_hot_install:0 toggle_boot_hash:0
 "
 
 _apply_toggle_defaults() {

@@ -22,6 +22,11 @@ case "${1:-}" in
     ;;
 esac
 
+if [ "${SPECTER_LOCK_HELD:-}" != "$KSM" ]; then
+  specter_backend_edit target sh "$0" "$@"
+  exit $?
+fi
+
 ksm_lock_targets || die "Failed to lock target list"
 
 _ensure_blacklist
@@ -64,19 +69,7 @@ _TMP_TARGET="$SPECTER_DIR/.target_new.$$"
 
 _parse_customize
 
-_ensure_target_txt() {
-  [ -n "$(ksm_read_targets)" ] && return 0
-  log_w "TARGET" "target list missing or empty, creating default"
-  _et_tmp="$SPECTER_DIR/.target_seed.$$"
-  for _entry in $FIXED_TARGETS; do
-    echo "$_entry"
-  done > "$_et_tmp"
-  _filter_blacklist "$_et_tmp"
-  ksm_commit_targets "$_et_tmp"
-  unset _entry _et_tmp
-}
-
-_ensure_target_txt
+# Build defaults into the staging list; never commit an intermediate seed.
 
 case "${1}" in
   --merge-denylist)

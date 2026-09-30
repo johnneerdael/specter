@@ -2,73 +2,23 @@
 set -e
 MODDIR=${0%/*}
 . "$MODDIR/../lib/common.sh"
-
-OUTPUT_DIR="/sdcard/Download"
+umask 077
+# Raw logs, arbitrary .val files and logcat can contain private keys/URLs/tokens.
+# Export only this bounded, non-secret summary. The old sanitize flag cannot
+# opt back into raw export.
+OUTPUT_DIR="${SPECTER_EXPORT_DIR:-/sdcard/Download}"
 OUTPUT_FILE="$OUTPUT_DIR/specter_logs.txt"
-SANITIZE="${1:-no}"
-
-log_i "EXPORT" "Starting log export (sanitize=$SANITIZE)"
-
-mkdir -p "$OUTPUT_DIR" 2>/dev/null || true
-: > "$OUTPUT_FILE" || { log_e "EXPORT" "Cannot write to $OUTPUT_FILE"; exit 1; }
-
-log_i "EXPORT" "Output: $OUTPUT_FILE"
-
-_sanitize_stream() {
-  if [ "$SANITIZE" = "sanitize" ]; then
-    sed -e 's/[0-9a-fA-F]\{32,\}/[REDACTED_HEX]/g' \
-        -e 's/[0-9a-fA-F]\{16,\}/[REDACTED_HEX]/g'
-  else
-    cat
-  fi
-}
-
-_append_section() {
-  _prefix="$1"
-  _header="$2"
-  _path="$3"
-  echo "$_prefix $_header $_prefix" >> "$OUTPUT_FILE"
-  cat "$_path" 2>/dev/null | _sanitize_stream >> "$OUTPUT_FILE" || true
-  echo "" >> "$OUTPUT_FILE"
-}
-
-log_i "EXPORT" "Collecting files from $SPECTER_DIR"
-
-for _f in "$SPECTER_DIR"/*; do
-  [ -f "$_f" ] || continue
-  _basename=$(basename "$_f")
-  log_d "EXPORT" "Adding $_basename"
-  _append_section "---" "$_basename" "$_f"
-done
-
-for _f in "$SPECTER_DIR"/log/*; do
-  [ -f "$_f" ] || continue
-  _basename=$(basename "$_f")
-  log_d "EXPORT" "Adding $_basename (log)"
-  _append_section "===" "$_basename" "$_f"
-done
-
-# Add logcat dump
-log_i "EXPORT" "Adding logcat dump"
-echo "=== LOGCAT ===" >> "$OUTPUT_FILE"
-if command -v logcat >/dev/null 2>&1; then
-  logcat -d -s Specter 2>/dev/null | _sanitize_stream >> "$OUTPUT_FILE" || true
-fi
-echo "" >> "$OUTPUT_FILE"
-
-# Add module config summary
-log_i "EXPORT" "Adding config summary"
-echo "=== SPECTER CONFIG ===" >> "$OUTPUT_FILE"
-for _cfg_file in "$SPECTER_DIR"/config/val/*.val; do
-  [ -f "$_cfg_file" ] || continue
-  _cfg_name=$(basename "$_cfg_file" .val)
-  _cfg_val=$(cat "$_cfg_file" 2>/dev/null || echo "")
-  echo "$_cfg_name=$_cfg_val" >> "$OUTPUT_FILE"
-done 2>/dev/null || true
-echo "" >> "$OUTPUT_FILE"
-
-log_i "EXPORT" "Export complete"
-echo ""
-echo "Logs exported to: $OUTPUT_FILE"
-log_i "EXPORT" "Log export complete"
-exit 0
+mkdir -p "$OUTPUT_DIR" || die "Cannot create export directory"
+[ ! -L "$OUTPUT_FILE" ] || die "Refusing symlinked export"
+_tmp=$(mktemp "$OUTPUT_DIR/.specter-summary.XXXXXX") || exit 1
+trap 'rm -f "$_tmp"' 0
+{
+  printf 'Specter privacy-safe settings summary\n'
+  printf 'Raw logs, logcat, key material, paths and URLs intentionally excluded.\n'
+  for _key in toggle_scheduler toggle_hot_install toggle_prop_handler toggle_action_gms toggle_action_target toggle_action_security_patch toggle_action_pif toggle_action_keybox toggle_auto_target toggle_autopif toggle_autokeybox; do
+    _value=$(cfg_get "$_key" 0)
+    case "$_value" in 0|1) printf '%s=%s\n' "$_key" "$_value" ;; *) printf '%s=[invalid or non-boolean]\n' "$_key" ;; esac
+  done
+} > "$_tmp"
+mv "$_tmp" "$OUTPUT_FILE" || die "Export commit failed"
+printf 'Privacy-safe summary exported to: %s\n' "$OUTPUT_FILE"

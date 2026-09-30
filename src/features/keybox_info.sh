@@ -17,7 +17,7 @@ _source=""
 _source_version=""
 _text=""
 _up_to_date=false
-_revoked=false
+_revoked=null
 _softbanned=false
 _serial=""
 _is_private_val="false"
@@ -33,20 +33,26 @@ if [ -f "$KEYBOX_FILE" ]; then
     _up_to_date=true
     log_d "KEYBOX_INFO" "Private keybox flagged by user"
     if _serial=$(decode_keybox_serial "$KEYBOX_FILE"); then
-      if check_google_revocation "$_serial"; then
-        _revoked=true
-        log_w "KEYBOX_INFO" "Revoked by Google"
-      fi
+      _revocation_status=0
+      check_google_revocation "$_serial" || _revocation_status=$?
+      case "$_revocation_status" in
+        0) _revoked=true ;;
+        1) _revoked=false ;;
+        *) _revoked=null ;;
+      esac
     fi
   elif _serial=$(decode_keybox_serial "$KEYBOX_FILE"); then
     log_d "KEYBOX_INFO" "Serial: $_serial"
 
     _serial_dec=$(printf '%u' "0x$_serial" 2>/dev/null || echo "")
 
-    if check_google_revocation "$_serial"; then
-      _revoked=true
-      log_w "KEYBOX_INFO" "Revoked by Google"
-    fi
+    _revocation_status=0
+      check_google_revocation "$_serial" || _revocation_status=$?
+      case "$_revocation_status" in
+        0) _revoked=true ;;
+        1) _revoked=false ;;
+        *) _revoked=null ;;
+      esac
 
     if [ "$KSM" = "omk" ] && cmp -s "$OMK_MODULE/keybox.xml" "$KEYBOX_FILE"; then
       _source="OhMyKeymint"
@@ -97,8 +103,6 @@ if [ -f "$KEYBOX_FILE" ]; then
   fi
 fi
 
-if [ "$_installed" != "true" ] || [ -n "$_source" ] || [ ! -f "$INFO_PATH" ] ||
-   { [ -n "$_serial" ] && ! grep -q '"serial": "'"$_serial"'"' "$INFO_PATH" 2>/dev/null; }; then
   cat <<EOF > "$INFO_PATH"
 {
   "installed": $_installed,
@@ -112,13 +116,14 @@ if [ "$_installed" != "true" ] || [ -n "$_source" ] || [ ! -f "$INFO_PATH" ] ||
   "is_private": $_is_private_val
 }
 EOF
-fi
 
 if [ "$_installed" = "true" ]; then
   if [ "$_revoked" = "true" ]; then
     log_w "KEYBOX_INFO" "Keybox is revoked by Google"
+  elif [ "$_revoked" = null ]; then
+    log_w "KEYBOX_INFO" "Revocation status unknown; validity not established"
   elif [ "$_up_to_date" = "true" ]; then
-    log_i "KEYBOX_INFO" "Keybox from $_source is valid and up to date"
+    log_i "KEYBOX_INFO" "Keybox from $_source is not listed in the checked revocation response and matches catalog version"
   elif [ -n "$_source" ]; then
     log_i "KEYBOX_INFO" "Keybox from $_source: version $_source_version"
   else

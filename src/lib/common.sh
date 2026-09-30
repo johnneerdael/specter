@@ -11,8 +11,11 @@ else
 fi
 
 . "$_root/lib/log.sh"
+: "${SPECTER_JSON_AWK:=$_root/lib/json.awk}"
+export SPECTER_JSON_AWK
 case "${1:-}" in --list|--list-raw|--get) export SPECTER_LOG_FD=2 ;; esac
 . "$_root/lib/constants.sh"
+. "$_root/lib/safety.sh"
 . "$_root/lib/network.sh"
 . "$_root/lib/modules.sh"
 . "$_root/lib/detect.sh"

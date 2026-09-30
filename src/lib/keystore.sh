@@ -16,47 +16,29 @@
 # this file (plus the per-format helpers) knows backend-specific paths.
 
 _ksm_auto_pick() {
-  if module_enabled teesim >/dev/null; then
-    printf '%s\n' teesim
-  elif module_enabled tricky_store >/dev/null; then
-    printf '%s\n' trickystore
-  elif module_enabled "${OMK_MODULE##*/}" >/dev/null; then
-    printf '%s\n' omk
-  fi
+  _kap_count=0 _kap_choice=none
+  for _kap_pair in teesim:teesim tricky_store:trickystore "${OMK_MODULE##*/}:omk"; do
+    module_enabled "${_kap_pair%%:*}" >/dev/null || continue
+    _kap_count=$((_kap_count + 1))
+    _kap_choice="${_kap_pair#*:}"
+  done
+  [ "$_kap_count" -eq 1 ] && printf '%s\n' "$_kap_choice" || printf '%s\n' none
+  unset _kap_count _kap_choice _kap_pair
 }
 
 ksm_enforce_singleton() {
-  _kes_w=""
-  case "$(cfg_get keystore_manager auto 2>/dev/null)" in
-    teesim) module_enabled teesim >/dev/null && _kes_w=teesim ;;
-    trickystore) module_enabled tricky_store >/dev/null && _kes_w=trickystore ;;
-    omk) module_enabled "${OMK_MODULE##*/}" >/dev/null && _kes_w=omk ;;
-  esac
-  [ -n "$_kes_w" ] || _kes_w=$(_ksm_auto_pick)
-  [ -n "$_kes_w" ] || { unset _kes_w; return 0; }
-
-  if [ "$_kes_w" != teesim ] && module_enabled teesim >/dev/null; then
-    module_disable teesim
-    printf '%s\n' teesim
-    log_i "KSM" "Disabled teesim (keystore conflict; using $_kes_w)"
-  fi
-  if [ "$_kes_w" != trickystore ] && module_enabled tricky_store >/dev/null; then
-    module_disable tricky_store
-    printf '%s\n' tricky_store
-    log_i "KSM" "Disabled tricky_store (keystore conflict; using $_kes_w)"
-  fi
-  if [ "$_kes_w" != omk ] && module_enabled "${OMK_MODULE##*/}" >/dev/null; then
-    module_disable "${OMK_MODULE##*/}"
-    printf '%s\n' "${OMK_MODULE##*/}"
-    log_i "KSM" "Disabled ${OMK_MODULE##*/} (keystore conflict; using $_kes_w)"
-  fi
-  unset _kes_w
+  # Retained API, now diagnostic only: refreshing status must never disable apps/modules.
+  detect_keystore_manager
+  [ "$KSM" != none ] || log_w "KSM" "No unambiguous enabled backend; select one explicitly before editing"
+  return 0
 }
 
 detect_keystore_manager() {
   _dkm_override=$(cfg_get keystore_manager auto 2>/dev/null)
   case "$_dkm_override" in
-    trickystore|teesim|omk) KSM=$_dkm_override ;;
+    trickystore) KSM=none; module_enabled tricky_store >/dev/null && KSM=trickystore ;;
+    teesim) KSM=none; module_enabled teesim >/dev/null && KSM=teesim ;;
+    omk) KSM=none; module_enabled "${OMK_MODULE##*/}" >/dev/null && KSM=omk ;;
     *)
       KSM=$(_ksm_auto_pick)
       [ -n "$KSM" ] || KSM=none
@@ -136,7 +118,7 @@ ksm_reload_injector() {
 _ksm_inplace_from() {
   _kif_src="$1" _kif_dst="$2"
   [ -f "$_kif_dst" ] || { unset _kif_src _kif_dst; return 1; }
-  cat "$_kif_src" > "$_kif_dst" || { unset _kif_src _kif_dst; return 1; }
+  specter_atomic_copy "$_kif_src" "$_kif_dst" || { unset _kif_src _kif_dst; return 1; }
   unset _kif_src _kif_dst
 }
 
@@ -217,39 +199,10 @@ ksm_read_targets_raw() {
   esac
 }
 
-ksm_lock_targets() {
-  mkdir -p "$SPECTER_DIR/.lock" || return 1
-  _klt="$SPECTER_DIR/.lock/targets"
-  _klt_n=0
-  while ! ln -s "$$" "$_klt" 2>/dev/null; do
-    _klt_pid=$(readlink "$_klt" 2>/dev/null || true)
-    if [ -n "$_klt_pid" ] && [ -d "/proc/$_klt_pid" ]; then
-      _klt_cmd=""
-      # shellcheck disable=SC2002
-      [ -f "/proc/$_klt_pid/cmdline" ] &&
-        _klt_cmd=$(cat "/proc/$_klt_pid/cmdline" 2>/dev/null | tr '\0' ' ' || echo "")
-      case "$_klt_cmd" in
-        *target.sh*) ;;
-        *)
-          rm -rf "$_klt"
-          continue
-          ;;
-      esac
-      _klt_n=$((_klt_n + 1))
-      [ "$_klt_n" -ge 15 ] && {
-        log_w "KSM" "timed out waiting for target lock (pid $_klt_pid)"
-        unset _klt _klt_n _klt_pid _klt_cmd
-        return 1
-      }
-      sleep 1
-      continue
-    fi
-    rm -rf "$_klt"
-  done
-  unset _klt _klt_n _klt_pid _klt_cmd
-}
+# Feature entry points hold the common backend transaction lock.
+ksm_lock_targets() { return 0; }
 
-ksm_commit_targets() {
+_ksm_commit_targets() {
   _kct_src="$1"
   case "$KSM_FORMAT" in
     ini)
@@ -284,7 +237,8 @@ ksm_commit_targets() {
     *)
       rm -f "${KSM_TARGETS}.bak"
       [ -f "$KSM_TARGETS" ] && cp "$KSM_TARGETS" "${KSM_TARGETS}.bak"
-      mv -f "$_kct_src" "$KSM_TARGETS"
+      specter_atomic_copy "$_kct_src" "$KSM_TARGETS" || return 1
+      rm -f "$_kct_src"
       ;;
   esac
   unset _kct_src
@@ -296,7 +250,7 @@ ksm_commit_targets() {
 #  - json: non-default TEESimulator profiles (only the default profile's apps
 #    are managed; ksm_read_targets_raw already returns default-only)
 #  - toml: no sections, same as ksm_commit_targets
-ksm_commit_targets_merge() {
+_ksm_commit_targets_merge() {
   _kcm_src="$1"
   case "$KSM_FORMAT" in
     ini) _ini_write_targets "$KSM_TARGETS" "$_kcm_src" || { unset _kcm_src; return 1; } ;;
@@ -343,7 +297,7 @@ ksm_get_security_patch() {
   esac
 }
 
-ksm_set_security_patch() {
+_ksm_set_security_patch() {
   _ksp_date="$1"
   case "$KSM_FORMAT" in
     ini)
@@ -393,12 +347,13 @@ ksm_set_security_patch() {
         }
         rm -f "$_ksp_tmp"
       else
-        mv -f "$_ksp_tmp" "$KSM_CONFIG" || {
+        specter_atomic_copy "$_ksp_tmp" "$KSM_CONFIG" || {
           rm -f "$_ksp_tmp"
           unset _ksp_date _ksp_vendor _ksp_yyyymm _ksp_tmp
           return 1
         }
       fi
+      rm -f "$_ksp_tmp"
       unset _ksp_vendor _ksp_yyyymm _ksp_tmp
       ;;
   esac
@@ -412,7 +367,7 @@ ksm_get_mode() {
   esac
 }
 
-ksm_set_mode() {
+_ksm_set_mode() {
   case "$KSM_FORMAT" in
     json) _teesim_set_mode "$KSM_TARGETS" "$1" ;;
     *) return 1 ;;
@@ -428,7 +383,7 @@ ksm_get_trust_field() {
   unset _kgt_key
 }
 
-ksm_set_trust_field() {
+_ksm_set_trust_field() {
   _kst_key="$1" _kst_val="$2"
   case "$KSM_FORMAT" in
     toml)
@@ -464,37 +419,19 @@ ksm_set_trust_field() {
 }
 
 # MODE "copy" keeps SRC; default "move" consumes it.
-ksm_install_keybox() {
-  _kik_src="$1" _kik_mode="${2:-move}"
-  case "$KSM" in
-    omk)
-      _ksm_inplace_from "$_kik_src" "$KSM_KEYBOX" || {
-        unset _kik_src _kik_mode
-        return 1
-      }
-      [ "$_kik_mode" = "copy" ] || rm -f "$_kik_src"
-      ;;
-    teesim)
-      mkdir -p "$TEESIM_DIR" 2>/dev/null
-      if [ "$_kik_mode" = "copy" ]; then
-        cp "$_kik_src" "$KSM_KEYBOX" || { unset _kik_src _kik_mode; return 1; }
-      else
-        mv "$_kik_src" "$KSM_KEYBOX" || { unset _kik_src _kik_mode; return 1; }
-      fi
-      _teesim_ensure_keybox_field "$TEESIM_CONFIG" || {
-        unset _kik_src _kik_mode
-        return 1
-      }
-      ;;
-    *)
-      mkdir -p "$(dirname "$KSM_KEYBOX")" 2>/dev/null
-      if [ "$_kik_mode" = "copy" ]; then
-        cp "$_kik_src" "$KSM_KEYBOX" || { unset _kik_src _kik_mode; return 1; }
-      else
-        mv "$_kik_src" "$KSM_KEYBOX" || { unset _kik_src _kik_mode; return 1; }
-      fi
-      ;;
-  esac
-  unset _kik_src _kik_mode
+_ksm_install_keybox() {
+  log_e "KEYBOX" "Installation disabled: complete key/certificate validation is not available; use the backend's native tool"
+  return 1
 }
 
+ksm_commit_targets() { specter_backend_edit target _ksm_commit_targets "$@"; }
+
+ksm_commit_targets_merge() { specter_backend_edit target _ksm_commit_targets_merge "$@"; }
+
+ksm_set_security_patch() { specter_backend_edit security_patch _ksm_set_security_patch "$@"; }
+
+ksm_set_mode() { specter_backend_edit teesim_mode _ksm_set_mode "$@"; }
+
+ksm_set_trust_field() { specter_backend_edit security_patch _ksm_set_trust_field "$@"; }
+
+ksm_install_keybox() { specter_backend_edit keybox _ksm_install_keybox "$@"; }

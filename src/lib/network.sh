@@ -4,19 +4,18 @@ download() {
     PATH="/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/data/data/com.termux/files/usr/bin:$PATH"
     _dl_tmp="" _dl_code=1 _dl_try=0 _dl_ua="Specter/1.0"
 
+    case "$_dl_url" in https://*) ;; *) log_e "NET" "HTTPS required"; PATH="$_dl_oldpath"; return 1 ;; esac
     log_d "NET" "Downloading $_dl_url"
 
     if [ -z "$_dl_output" ]; then
-        _dl_tmp=$(mktemp 2>/dev/null || echo "/data/local/tmp/.specter_dl_${$}_$(date +%s 2>/dev/null || busybox date +%s)")
+        _dl_tmp=$(mktemp 2>/dev/null)
+        [ -n "$_dl_tmp" ] || { PATH="$_dl_oldpath"; return 1; }
         _dl_output="$_dl_tmp"
     fi
 
     for _dl_try in 1 2 3; do
-        if busybox wget -T 10 --no-check-certificate -qO "$_dl_output" -U "$_dl_ua" "$_dl_url" 2>/dev/null; then
-            [ -s "$_dl_output" ] && { _dl_code=0; break; }
-        fi
         if command -v curl >/dev/null 2>&1 && curl --version >/dev/null 2>&1; then
-            curl --connect-timeout 10 -Ls -o "$_dl_output" -A "$_dl_ua" "$_dl_url" 2>/dev/null && [ -s "$_dl_output" ] && { _dl_code=0; break; }
+            curl --max-time 30 --proto '=https' --proto-redir '=https' --connect-timeout 10 -fLs -o "$_dl_output" -A "$_dl_ua" "$_dl_url" 2>/dev/null && [ -s "$_dl_output" ] && { _dl_code=0; break; }
         fi
         sleep 1
     done

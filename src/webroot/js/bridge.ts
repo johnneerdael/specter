@@ -77,6 +77,13 @@ export function runScript(scriptName: string, type = 'feature'): Promise<ScriptR
 }
 
 export function exec(command: string): Promise<ExecResult> {
+  if (/^sh\s/.test(command)) {
+    return import("./cfg.js").then(async ({ cfgFlush }) => { await cfgFlush(); return execRaw(command); });
+  }
+  return execRaw(command);
+}
+
+function execRaw(command: string): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
     if (!window.ksu?.exec) { reject(new BridgeError('NO_BRIDGE', 'no-bridge')); return; }
 
@@ -125,7 +132,7 @@ function createChildProcess(): ChildProcess {
   };
 }
 
-export function spawnScript(scriptName: string, type = 'feature'): ChildProcess {
+export function spawnScript(scriptName: string, type = 'feature', args: string[] = []): ChildProcess {
   const child = createChildProcess();
   if (!window.ksu?.exec) { setTimeout(() => (child as any).emit('error', new BridgeError('NO_BRIDGE', 'no-bridge'))); return child; }
   if (!MODULE) { setTimeout(() => (child as any).emit('error', new BridgeError('NO_MODULE', 'no-module-path'))); return child; }
@@ -139,10 +146,10 @@ export function spawnScript(scriptName: string, type = 'feature'): ChildProcess 
     const timer = setTimeout(cleanup, EXEC_TIMEOUT_MS);
     (child as any).on('exit', () => { clearTimeout(timer); cleanup(); });
     (child as any).on('error', () => { clearTimeout(timer); cleanup(); });
-    try { window.ksu.spawn('sh', JSON.stringify([scriptPath]), '{}', globalName); }
+    try { window.ksu.spawn('sh', JSON.stringify([scriptPath, ...args]), '{}', globalName); }
     catch (e) { clearTimeout(timer); cleanup(); setTimeout(() => (child as any).emit('error', e)); }
   } else {
-    const cmd = `sh ${shellEscape(scriptPath)}`;
+    const cmd = `sh ${shellEscape(scriptPath)} ${args.map(shellEscape).join(" ")}`;
     let timedOut = false;
     const t = setTimeout(() => { timedOut = true; (child as any).emit('error', new TimeoutError()); }, EXEC_TIMEOUT_MS);
     exec(cmd).then(({ code, stdout, stderr }) => {

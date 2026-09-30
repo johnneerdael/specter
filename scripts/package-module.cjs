@@ -1,0 +1,18 @@
+const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+const source = fs.readFileSync(path.join(root, 'src/module.prop'), 'utf8');
+const base = source.match(/^version=(\d+\.\d+\.\d+)$/m)?.[1];
+const build = Number(source.match(/^versionCode=(\d+)$/m)?.[1]);
+if (!base || !Number.isSafeInteger(build)) throw new Error('Invalid module version');
+const hash = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+const version = `v${base}-g${hash}`;
+const [major, minor, patch] = base.split('.').map(Number);
+const versionCode = major * 10000 + minor * 1000 + patch * 100 + build;
+const prop = path.join(root, 'Module/module.prop');
+fs.writeFileSync(prop, fs.readFileSync(prop, 'utf8').replace(/^version=.*$/m, `version=${version}`).replace(/^versionCode=.*$/m, `versionCode=${versionCode}`));
+const output = path.join(root, `Specter-${version}.zip`);
+fs.rmSync(output, { force: true });
+execFileSync('zip', ['-qr', output, '.'], { cwd: path.join(root, 'Module'), stdio: 'inherit' });
+console.log(path.basename(output));

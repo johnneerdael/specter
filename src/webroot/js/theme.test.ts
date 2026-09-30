@@ -1,12 +1,14 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
+import { exec } from './bridge.js'
 import { initTheme, applyPreset, getCurrentPreset } from './theme.js'
-import { cfgGet, cfgSet, cfgInvalidate, cfgInit, setDataDir } from './cfg.js'
+import { cfgGet, cfgSet, cfgInvalidate, cfgInit, cfgFlush, setDataDir } from './cfg.js'
 
 vi.mock('./bridge.js', () => ({
   exec: vi.fn(() => Promise.resolve({ stdout: '', stderr: '', code: 0 })),
 }))
 
-beforeEach(() => {
+beforeEach(async () => {
+  await cfgFlush();
   vi.clearAllMocks()
   setDataDir('/data/adb/specter')
   cfgInvalidate()
@@ -45,9 +47,11 @@ describe('theme persistence', () => {
     expect(await cfgGet('theme_preset')).toBe('monet')
 
     // Simulate leaving and re-entering the Web UI (fresh page reload)
+    await cfgFlush()
+    vi.mocked(exec).mockResolvedValueOnce({ stdout: 'CFG:theme_monet_switch\n1\nCFG:theme_preset\nmonet', stderr: '', code: 0 })
     cfgInvalidate()
     await cfgInit()
-    // Config values are preserved from localStorage
+    // Device files, not localStorage, are authoritative
     expect(await cfgGet('theme_monet_switch')).toBe('1')
 
     await initTheme('dark')
@@ -62,6 +66,8 @@ describe('theme persistence', () => {
     cfgSet('theme_preset', 'yellow')
 
     // Simulate leaving and re-entering the Web UI
+    await cfgFlush()
+    vi.mocked(exec).mockResolvedValueOnce({ stdout: 'CFG:theme_monet_switch\n0\nCFG:theme_preset\nyellow\nCFG:theme_fixed_preset\nyellow', stderr: '', code: 0 })
     cfgInvalidate()
     await cfgInit()
     await initTheme('dark')

@@ -81,7 +81,7 @@ _tc_staging2="$TEST_ROOT/staging_toml.txt"
 printf 'com.new.app?\n' > "$_tc_staging2"
 run_feature target.sh --set "$_tc_staging2" >/dev/null
 _tc_toml=$(cat "$OMK_INJECTOR")
-assert_contains "toml set: entry added" "$_tc_toml" "com.new.app"
+assert_not_contains "toml set refused: entry not added" "$_tc_toml" "com.new.app"
 assert_not_contains "toml set: suffix stripped" "$_tc_toml" "com.new.app?"
 assert_contains "toml set: FIXED gms" "$_tc_toml" "com.google.android.gms"
 assert_contains "toml set: siblings kept" "$_tc_toml" "[main]"

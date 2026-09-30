@@ -15,50 +15,20 @@ INOTIFY_HANDLER="$SPECTER_DIR/.inotify_handler.sh"
 ensure_dir "$TASKS_DIR" 2>/dev/null
 ensure_dir "$SPECTER_DIR/log" 2>/dev/null
 
-if [ -f "$PID_FILE" ]; then
-  _old_pid=$(cat "$PID_FILE" 2>/dev/null || echo "")
-  if [ -n "$_old_pid" ] && [ -f "/proc/$_old_pid/cmdline" ]; then
-    # shellcheck disable=SC2002
-    _cmdline=$(cat "/proc/$_old_pid/cmdline" 2>/dev/null | tr '\0' ' ' || echo "")
-    case "$_cmdline" in
-      *scheduler*) log_w "SCHED" "Already running (PID $_old_pid), exiting"; exit 0 ;;
-    esac
-  fi
-  rm -f "$PID_FILE"
-fi
-echo "$$" > "$PID_FILE"
-trap 'rm -f "$PID_FILE" "$INOTIFY_HANDLER" 2>/dev/null; exit' EXIT TERM INT HUP
+[ "$(cfg_get toggle_scheduler 0)" = 1 ] || exit 0
+# An atomic directory prevents duplicate schedulers; stale locks require inspection.
+_sched_lock="$SPECTER_DIR/.scheduler.lock"
+mkdir "$_sched_lock" 2>/dev/null || { log_w "SCHED" "Scheduler lock exists; refusing duplicate"; exit 1; }
+printf '%s' "$$" > "$PID_FILE"
+trap 'rm -f "$PID_FILE" "$INOTIFY_HANDLER"; rmdir "$_sched_lock" 2>/dev/null' EXIT
+trap 'exit 0' TERM INT HUP
 
 log_i "SCHED" "Started (PID $$)"
 
-# Launch inotifyd for app install detection if available (skip if method=polling)
-if [ "$(cfg_get toggle_auto_target 1)" = "1" ] && [ "$(cfg_get auto_target_method instant)" != "polling" ]; then
-  _inotify_bin="$MODDIR/deps/inotifyd"
-
-  if [ -x "$_inotify_bin" ]; then
-    cat > "$INOTIFY_HANDLER" <<EOF
-#!/system/bin/sh
-MODDIR='${MODDIR}'
-SPECTER_DIR='${SPECTER_DIR}'
-_cg_val="\$(su -c "cat \${SPECTER_DIR}/config/val/toggle_auto_target.val" 2>/dev/null)"
-[ "\${_cg_val:-1}" = "1" ] || exit 0
-su -c "sh \${MODDIR}/features/auto_target.sh" 2>/dev/null || true
-. "\${MODDIR}/lib/common.sh" 2>/dev/null
-. "\${MODDIR}/lib/desc.sh" 2>/dev/null
-refresh_module_description 2>/dev/null || true
-EOF
-    chmod 755 "$INOTIFY_HANDLER"
-    "$_inotify_bin" /data/app "$INOTIFY_HANDLER" >/dev/null 2>&1 &
-    log_i "SCHED" "inotifyd launched for /data/app"
-  fi
-  unset _inotify_bin
-fi
-
-# Launch inotifyd for wallpaper changes — calls monet.sh (writes monet.json for WebUI)
-if [ -x "$MODDIR/deps/inotifyd" ] && [ -f "$MODDIR/features/monet.sh" ]; then
-  "$MODDIR/deps/inotifyd" -m 8 /data/system/users/0/wallpaper "$MODDIR/features/monet.sh" >/dev/null 2>&1 &
-  log_i "SCHED" "inotifyd launched for wallpaper → monet.sh"
-fi
+# Detached inotify children could outlive the verified scheduler PID.
+# Preserve native watchers; use only the explicitly enabled polling loop until
+# child lifetime/identity cleanup has dedicated Android validation.
+log_w "SCHED" "Detached inotify watchers disabled; explicit polling only"
 
 while true; do
   [ -d "$MODDIR" ] || exit 0

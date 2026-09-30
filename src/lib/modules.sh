@@ -15,9 +15,9 @@ module_detect() {
 module_enabled() {
   _me_id="$1"
   _me_dir="$MODULES_BASE/$_me_id"
-  [ -f "$_me_dir/module.prop" ] || _me_dir="${MODULES_BASE}_update/$_me_id"
   [ -f "$_me_dir/module.prop" ] || { unset _me_id _me_dir; return 1; }
   [ -f "$_me_dir/disable" ] && { unset _me_id _me_dir; return 1; }
+  [ -f "$_me_dir/remove" ] && { unset _me_id _me_dir; return 1; }
   grep "^name=" "$_me_dir/module.prop" 2>/dev/null | cut -d= -f2
   unset _me_id _me_dir
   return 0

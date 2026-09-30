@@ -51,8 +51,10 @@ refresh_module_description() {
         _new_desc="🔑 $_title · ❌ | $_apps apps | 🛡️ $_patch"
       elif [ -n "$_kb_soft" ]; then
         _new_desc="🔑 $_title · ⚠️ | $_apps apps | 🛡️ $_patch"
+      elif printf '%s' "$_kb_info" | grep -q '"revoked": *false'; then
+        _new_desc="🔑 $_title · Checked-not-listed | $_apps apps | 🛡️ $_patch"
       else
-        _new_desc="🔑 $_title · ✅ | $_apps apps | 🛡️ $_patch"
+        _new_desc="🔑 $_title · Unknown | $_apps apps | 🛡️ $_patch"
       fi
     else
       _new_desc="❌ No keybox | $_apps apps | 🛡️ $_patch"

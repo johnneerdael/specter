@@ -6,7 +6,6 @@ MODDIR=${0%/*}
 
 detect_keystore_manager
 [ "$KSM" = "teesim" ] || die "teesim_mode.sh requires JingMatrix TEESimulator (teesim)"
-_conflict_claimed teesim_mode && die "TEESimulator WebUI owns operation mode (Control → Conflict Resolution to change)"
 
 case "${1:-}" in
   --get)
@@ -14,6 +13,7 @@ case "${1:-}" in
     exit 0
     ;;
   --set)
+    _conflict_claimed teesim_mode && die "Native TEESimulator tools own operation mode"
     case "${2:-}" in
       patch|generation) ;;
       *) die "teesim_mode.sh --set requires patch or generation" ;;

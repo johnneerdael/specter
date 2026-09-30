@@ -7,7 +7,9 @@ dev/
 specter-app-catalog.json
 zib3J7sn
 config.json
-/docs/
+/docs/*
+!/docs/COMPATIBILITY.md
+!/docs/HARDENING.md
 web/note_modules
 web/The best setup.md
 web/docs/.vitepress/dist/

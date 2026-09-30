@@ -82,9 +82,12 @@ MOCK
 }
 
 source_libs() {
+  SPECTER_JSON_AWK="$REPO_ROOT/src/lib/json.awk"
+  export SPECTER_JSON_AWK
   PATH="$BIN_DIR:/usr/bin:/bin"
   . "$REPO_ROOT/src/lib/log.sh" 2>/dev/null
   . "$REPO_ROOT/src/lib/constants.sh" 2>/dev/null
+  . "$REPO_ROOT/src/lib/safety.sh"
   . "$REPO_ROOT/src/lib/network.sh" 2>/dev/null
   . "$REPO_ROOT/src/lib/modules.sh" 2>/dev/null
   . "$REPO_ROOT/src/lib/detect.sh" 2>/dev/null

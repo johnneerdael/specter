@@ -3,5 +3,5 @@ name=Specter
 version=1.5.0
 versionCode=21
 author=dpejoh
-description=Unified Play Integrity and root hiding stack for Android
-updateJson=https://raw.githubusercontent.com/dpejoh/specter/main/update.json
+description=Preservation-first Specter fork; no payment or integrity guarantee
+updateJson=

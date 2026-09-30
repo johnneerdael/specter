@@ -1,7 +1,7 @@
 import { getModuleDir, exec } from './bridge.js';
 import { cfgGet, cfgSet } from './cfg.js';
 import { getTranslation } from './i18n.js';
-import { shellEscape, fetchJson } from './utils.js';
+import { shellEscape, fetchJson, escapeHtml } from './utils.js';
 import { showToast } from './toast.js';
 import { openFileBrowser } from './file-browser.js';
 import { refreshKeyboxStatus } from './device.js';
@@ -157,7 +157,7 @@ export async function openCustomKeyboxDialog() {
                   <div class="list-item-content">
                     <div class="toggle-text">${t('custom_kb_file', 'Import File')}</div>
                     <span class="supporting-text" id="kb-file-subtitle" style="${selectedFilePath ? 'color: var(--md-sys-color-primary); font-weight: 500;' : ''}">
-                      ${selectedFilePath ? selectedFilePath.split('/').pop() : t('custom_kb_file_desc', 'Select a keybox XML file from your device')}
+                      ${escapeHtml(selectedFilePath ? selectedFilePath.split('/').pop() || '' : t('custom_kb_file_desc', 'Select a keybox XML file from your device'))}
                     </span>
                   </div>
                   <div class="spacer"></div>
@@ -210,7 +210,7 @@ export async function openCustomKeyboxDialog() {
                       id="kb-url-input"
                       class="subpage-full-input"
                       placeholder="${t('kb_url_placeholder', 'https://example.com/keybox.xml or /sdcard/keybox.xml')}"
-                      value="${selectedFilePath}"
+                      value="${escapeHtml(selectedFilePath)}"
                       aria-label="${t('custom_kb_url', 'URL or Path')}"
                     />
                     <md-icon-button id="kb-paste-btn" aria-label="${t('kb_paste_aria', 'Paste from clipboard')}">

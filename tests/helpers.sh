@@ -31,3 +31,6 @@ assert_log_contains() { _label="$1" _log="$2" _pattern="$3"; log_contains "$_log
 assert_log_not_contains() { _label="$1" _log="$2" _pattern="$3"; log_contains "$_log" "$_pattern" && fail "$_label" "log [$_log] unexpectedly contains pattern" || ok "$_label"; }
 
 done_testing() { echo "---"; echo "  Total: $((_pass + _fail)) | Pass: $_pass | Fail: $_fail"; echo ""; return $_fail; }
+
+file_inode() { stat -c %i "$1" 2>/dev/null || stat -f %i "$1"; }
+assert_ne() { [ "$2" != "$3" ] && ok "$1" || fail "$1" "values unexpectedly equal [$2]"; }

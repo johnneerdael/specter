@@ -5,7 +5,10 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, 'hardening/**']
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -26,6 +29,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
 
       - name: Type check
         run: npx tsc --noEmit
@@ -52,6 +58,8 @@ jobs:
           test -f Module/webroot/index.html
           test -f Module/lib/common.sh
           test -f Module/lib/constants.sh
+          test -f Module/lib/safety.sh
+          test -f Module/lib/json.awk
           test -f Module/webroot/json/module_paths.json
 
       - name: Check no hardcoded paths
@@ -72,11 +80,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.get_name.outputs.artifact_name }}
-          path: Module/
+          path: Specter-*.zip
           retention-days: 28
 
       - name: Send CI build to Telegram
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && vars.ENABLE_TELEGRAM_NOTIFICATIONS == 'true'
         run: |
           COMMIT_MSG=$(git log -1 --pretty=%s | sed 's/`/'"'"'/g')
           COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
@@ -88,7 +96,7 @@ jobs:
             -F caption="$CAPTION" \
             -F parse_mode="Markdown" \
             "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument")
-          cat response.json
+          # Do not expose bot/chat API response data in public logs.
           if [ "$HTTP_CODE" != "200" ]; then
             echo "Telegram send failed (HTTP $HTTP_CODE)"
             exit 1

@@ -9,6 +9,8 @@ teesim|TEESimulator WebUI|passive|security_patch,teesim_mode|
 EOF
 
 set_cfg "toggle_action_security_patch" "1"
+set_cfg "toggle_action_target" "1"
+set_cfg "toggle_action_keybox" "1"
 
 set_cfg "conflict_teesim" "priority_module"
 _feature_should_run security_patch && _fsr1=run || _fsr1=skip
@@ -28,7 +30,7 @@ assert_contains "status: module priority" "$(conflict_status_json)" '"prioritySp
 # teesim_mode gate
 set_cfg "conflict_teesim" "priority_module"
 run_feature teesim_mode.sh --get >/dev/null 2>&1
-assert_exit_code "mode: refused when claimed" 1 "$?"
+assert_exit_code "readonly mode query allowed when claimed" 0 "$?"
 
 set_cfg "conflict_teesim" "priority_specter"
 run_feature teesim_mode.sh --get >/dev/null 2>&1

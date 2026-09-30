@@ -7,7 +7,7 @@ let doc: Document
 
 beforeAll(() => {
   const parser = new DOMParser()
-  doc = parser.parseFromString(readFileSync(HTML_PATH, 'utf8'), 'text/html')
+  doc = parser.parseFromString(readFileSync(HTML_PATH, 'utf8').replace(/<link[^>]*rel="stylesheet"[^>]*>/g, ''), 'text/html')
 })
 
 describe('document structure', () => {

@@ -22,14 +22,39 @@
 # Invariants:
 #   - _teesim_to_ir    config.json → IR; tokenizer drops comments/whitespace
 #                      but the file itself is not modified (reads are pure)
-#   - _teesim_from_ir  IR → config.json; profiles without apps are dropped,
-#                      missing fields fall back to profile defaults
-#   - _teesim_load_ir  read + repair (seeds a default profile from
-#                      config.default.json, appends one when missing); only
-#                      write paths use it — readers use _teesim_to_ir
+#   - _teesim_from_ir  IR → config.json; empty profiles and omitted optional
+#                      fields are preserved rather than fabricating values
+#   - _teesim_load_ir  read + stage a missing default profile from validated
+#                      config.default.json (or known defaults if no seed exists);
+#                      no intermediate source write; refuse an unusable seed
 #   - Specter manages ONLY the "default" profile: _teesim_commit_apps,
 #     _teesim_set_patch, _teesim_set_mode and _teesim_ensure_keybox_field
 #     all scope their edits to it; other profiles pass through untouched
+
+# Unknown compound fields, escaped strings and future versions cannot round-trip
+# through this minimal IR. Refuse them before repair or write.
+_teesim_supported() (
+  [ -s "$1" ] || return 1
+  _tss_nodes=$(awk -f "$SPECTER_JSON_AWK" "$1") || return 1
+  printf '%s\n' "$_tss_nodes" | awk -F '\t' '
+    $1=="/" && $2=="object" { next }
+    $1=="/version" && $2=="number" && $3=="1" { version=1;next }
+    $1=="/profiles" && $2=="object" { profiles=1;next }
+    $1 ~ /^\/profiles\/[A-Za-z0-9_-]+$/ && $2=="object" { next }
+    $1 ~ /^\/profiles\/[A-Za-z0-9_-]+\/patchLevel$/ && $2=="object" { next }
+    $1 ~ /^\/profiles\/[A-Za-z0-9_-]+\/apps$/ && $2=="array" { next }
+    $1 ~ /^\/profiles\/[^\/]+\/(apps|patchLevel)$/ { bad=1;next }
+    $2=="object" || $2=="array" { bad=1;next }
+    $3 ~ /\\/ { bad=1;next }
+    $1 ~ /^\/profiles\/[^\/]+\/apps\/[0-9]+$/ && $2=="string" { next }
+    $1 ~ /^\/profiles\/[^\/]+\/patchLevel\/(system|vendor|boot)$/ && $2=="string" { next }
+    $1 ~ /^\/profiles\/[^\/]+\/(keybox|mode|osVersion|brand|device|product|manufacturer|model|serial|imei|meid|imei2)$/ && $2!="string" { bad=1;next }
+    $1 ~ /^\/profiles\/[^\/]+\/[A-Za-z0-9_]+$/ { next }
+    $1 ~ /^\/[A-Za-z0-9_]+$/ && $1!="/version" { next }
+    { bad=1 }
+    END { exit (bad || !version || !profiles) }
+  '
+)
 
 _teesim_to_ir() {
   _tti_file="$1"
@@ -58,7 +83,8 @@ _teesim_to_ir() {
             }
             i++
           }
-          break
+          i++
+          continue
         }
         if (tok[i] ~ /^"/ && tok[i] != "\"version\"") {
           tk = unquote(tok[i]); i++
@@ -204,10 +230,6 @@ _teesim_from_ir() {
       id = substr($0, 3)
       nprof++
       order[nprof] = id
-      keybox[id] = "keybox.xml"
-      mode[id] = "patch"
-      osver[id] = ""
-      sys[id] = "today"; vend[id] = "YYYY-MM-05"; boot[id] = "YYYY-MM-05"
       napps[id] = 0
       next
     }
@@ -257,7 +279,6 @@ _teesim_from_ir() {
       nkeep = 0
       for (p = 1; p <= nprof; p++) {
         id = order[p]
-        if (napps[id] < 1) continue
         keep[++nkeep] = id
       }
       if (nkeep < 1) exit 1
@@ -270,15 +291,22 @@ _teesim_from_ir() {
       for (p = 1; p <= nkeep; p++) {
         id = keep[p]
         printf "    \"%s\": {\n", jesc(id)
-        printf "      \"keybox\": \"%s\",\n", jesc(keybox[id])
-        printf "      \"mode\": \"%s\",\n", jesc(mode[id])
-        printf "      \"patchLevel\": { \"system\": \"%s\", \"vendor\": \"%s\", \"boot\": \"%s\" },\n", \
-          jesc(sys[id]), jesc(vend[id]), jesc(boot[id])
-        printf "      \"osVersion\": \"%s\",\n", jesc(osver[id])
+        if (id in keybox) printf "      \"keybox\": \"%s\",\n", jesc(keybox[id])
+        if (id in mode) printf "      \"mode\": \"%s\",\n", jesc(mode[id])
+        if ((id in sys) || (id in vend) || (id in boot)) {
+          printf "      \"patchLevel\": {"
+          sep=""
+          if(id in sys) { printf "%s \"system\": \"%s\"",sep,jesc(sys[id]);sep="," }
+          if(id in vend) { printf "%s \"vendor\": \"%s\"",sep,jesc(vend[id]);sep="," }
+          if(id in boot) { printf "%s \"boot\": \"%s\"",sep,jesc(boot[id]) }
+          print " },"
+        }
+        if (id in osver) printf "      \"osVersion\": \"%s\",\n", jesc(osver[id])
         n = split("brand device product manufacturer model serial imei meid imei2", fields, " ")
         for (fi = 1; fi <= n; fi++) {
           f = fields[fi]
-          v = ((id SUBSEP f) in ident) ? ident[id, f] : ""
+          if (!((id SUBSEP f) in ident)) continue
+          v = ident[id, f]
           printf "      \"%s\": \"%s\",\n", f, jesc(v)
         }
         for (x = 1; x <= nx[id]; x++) {
@@ -309,47 +337,27 @@ _teesim_empty_ir() {
   printf 'P default\nK keybox.xml\nM patch\nO \nS today\nV YYYY-MM-05\nB YYYY-MM-05\n'
 }
 
-_teesim_repair_config() {
-  _trc_cfg="${1:-$TEESIM_CONFIG}"
-  _trc_seed="${MODULES_BASE}/teesim/config.default.json"
-  mkdir -p "$(dirname "$_trc_cfg")" 2>/dev/null || true
-  [ -f "$_trc_seed" ] || { unset _trc_cfg _trc_seed; return 0; }
-
-  if [ ! -f "$_trc_cfg" ]; then
-    cp "$_trc_seed" "$_trc_cfg" 2>/dev/null || true
-    unset _trc_cfg _trc_seed
-    return 0
-  fi
-
-  [ -s "$_trc_cfg" ] || { unset _trc_cfg _trc_seed; return 0; }
-  grep -q '"profiles"' "$_trc_cfg" 2>/dev/null || { unset _trc_cfg _trc_seed; return 0; }
-
-  _teesim_to_ir "$_trc_cfg" 2>/dev/null | grep -q '^P default$' && {
-    unset _trc_cfg _trc_seed
-    return 0
-  }
-
-  _trc_ir="${_trc_cfg}.repair.$$"
-  _teesim_to_ir "$_trc_seed" | awk '/^P / { k = ($2 == "default"); if (k) print; next } k' > "$_trc_ir"
-  if [ -s "$_trc_ir" ]; then
-    _teesim_to_ir "$_trc_cfg" >> "$_trc_ir"
-    _teesim_write_ir "$_trc_cfg" "$_trc_ir" || true
-  fi
-  rm -f "$_trc_ir"
-  unset _trc_cfg _trc_seed _trc_ir
-}
-
 _teesim_load_ir() {
   _tli_file="$1" _tli_out="$2"
-  _teesim_repair_config "$_tli_file"
+  if [ -f "$_tli_file" ]; then
+    _teesim_supported "$_tli_file" || { log_e "TEESIM" "Unsupported/malformed config; original retained"; return 1; }
+  fi
+  # Never repair/write the source before the final validated commit.
   if [ -f "$_tli_file" ]; then
     _teesim_to_ir "$_tli_file" > "$_tli_out" || { unset _tli_file _tli_out; return 1; }
   else
     _teesim_empty_ir > "$_tli_out"
   fi
   if ! grep -q '^P default$' "$_tli_out" 2>/dev/null; then
-    _teesim_empty_ir >> "$_tli_out"
+    _tli_seed="${MODULES_BASE}/teesim/config.default.json"
+    if [ -f "$_tli_seed" ]; then
+      _teesim_supported "$_tli_seed" || return 1
+      _teesim_to_ir "$_tli_seed" | awk '/^P / { keep=($2=="default") } keep' >> "$_tli_out"
+    else
+      _teesim_empty_ir >> "$_tli_out"
+    fi
   fi
+  grep -q '^P default$' "$_tli_out" || { log_e "TEESIM" "No default profile in configuration or seed; refusing edit"; return 1; }
   unset _tli_file _tli_out
 }
 
@@ -362,11 +370,13 @@ _teesim_write_ir() {
     unset _twi_file _twi_ir _twi_tmp
     return 1
   }
-  mv -f "$_twi_tmp" "$_twi_file" || {
+  _teesim_supported "$_twi_tmp" || { rm -f "$_twi_tmp"; return 1; }
+  specter_atomic_copy "$_twi_tmp" "$_twi_file" || {
     rm -f "$_twi_tmp"
     unset _twi_file _twi_ir _twi_tmp
     return 1
   }
+  rm -f "$_twi_tmp"
   unset _twi_file _twi_ir _twi_tmp
 }
 
@@ -472,10 +482,8 @@ _teesim_set_patch() {
   _tsp_yyyymm=$(printf '%s' "$_tsp_date" | cut -d'-' -f1-2)
   awk -v sys="$_tsp_yyyymm" -v boot="$_tsp_date" -v vend="$_tsp_date" '
     BEGIN { cur = "" }
-    /^P / { cur = $2; print; next }
-    cur == "default" && /^S / { print "S " sys; next }
-    cur == "default" && /^V / { print "V " vend; next }
-    cur == "default" && /^B / { print "B " boot; next }
+    /^P / { cur = $2; print; if(cur=="default") {print "S " sys;print "V " vend;print "B " boot}; next }
+    cur == "default" && /^[SVB] / { next }
     { print }
   ' "$_tsp_ir" > "${_tsp_ir}.out"
   _teesim_write_ir "$_tsp_cfg" "${_tsp_ir}.out"
@@ -514,8 +522,8 @@ _teesim_set_mode() {
   }
   awk -v mode="$_tsm_mode" '
     BEGIN { cur = "" }
-    /^P / { cur = $2; print; next }
-    cur == "default" && /^M / { print "M " mode; next }
+    /^P / { cur = $2; print; if(cur=="default") print "M " mode; next }
+    cur == "default" && /^M / { next }
     { print }
   ' "$_tsm_ir" > "${_tsm_ir}.out"
   _teesim_write_ir "$_tsm_cfg" "${_tsm_ir}.out"

@@ -201,12 +201,14 @@ export function openRegenerateDialog(ctx: TargetDialogsContext) {
 
       appendToOutput('[TARGET] Regenerating target.txt from all apps...');
       try {
-        await exec(`sh ${shellEscape(getModuleDir() + '/features/target.sh')}`);
+        const result = await exec(`sh ${shellEscape(getModuleDir() + '/features/target.sh')}`);
+        if (result.code !== 0) throw new Error(result.stderr || 'Target regeneration refused');
         appendToOutput('[TARGET] Regeneration complete');
         showToast(t('ta_regenerate_success', 'Target list regenerated'), { icon: 'check_circle', type: 'success', autoCloseDelay: 2500 });
         await ctx.refreshApps();
       } catch (e) {
         appendToOutput(`[TARGET] Regeneration failed: ${e}`, true);
+        showToast('Target regeneration failed; see output', { type: 'error', autoCloseDelay: 4000 });
       } finally {
         ctx.loading.style.display = 'none';
         ctx.list.style.display = '';
@@ -216,4 +218,3 @@ export function openRegenerateDialog(ctx: TargetDialogsContext) {
     d.querySelector('.dialog-action-close')!.addEventListener('click', () => d.close());
     d.show();
   }
-

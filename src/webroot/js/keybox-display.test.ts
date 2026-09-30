@@ -2,6 +2,11 @@ import { describe, expect, it, beforeEach } from 'vitest'
 import { applyKeyboxStatus } from './device.js'
 
 describe('keybox display format', () => {
+  it('unknown revocation check is never shown as active', () => {
+    document.body.innerHTML = '<span id="keybox-name"></span><span id="keybox-by"></span><span id="keybox-source"></span><span id="keybox-version"></span><span id="kb-version-badge"></span><span id="keybox-status"></span>'
+    applyKeyboxStatus({ installed: true, revoked: null } as any)
+    expect(document.getElementById('keybox-status')!.textContent).toContain('Unknown')
+  })
   beforeEach(() => {
     document.body.innerHTML = `
       <div class="kb-hero-name-row">

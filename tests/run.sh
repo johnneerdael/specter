@@ -16,10 +16,13 @@ echo "=============================================="
 echo "  Specter Boot Script Test Suite"
 echo "=============================================="
 
+failed=0
 for tf in "${TESTS[@]}"; do
   [ ! -f "$tf" ] && echo "  SKIP  $tf" && continue
-  ( . ./mock_env.sh; . ./helpers.sh 2>/dev/null; set +e; . "$tf" )
+  if ! ( . ./mock_env.sh; . ./helpers.sh; set +e; . "$tf" ); then
+    failed=1
+  fi
 done
 
 echo "=============================================="
-exit 0
+exit "$failed"

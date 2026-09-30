@@ -52,11 +52,12 @@ _ksm_txt_merge() {
   }
   rm -f "${KSM_TARGETS}.bak"
   cp "$KSM_TARGETS" "${KSM_TARGETS}.bak"
-  mv -f "$_ktm_out" "$KSM_TARGETS" || {
+  specter_atomic_copy "$_ktm_out" "$KSM_TARGETS" || {
     rm -f "$_ktm_out"
     unset _ktm_src _ktm_out
     return 1
   }
+  rm -f "$_ktm_out"
   unset _ktm_src _ktm_out
 }
 
@@ -86,11 +87,12 @@ _txt_insert_default() {
     unset _tid_file _tid_add _tid_tmp
     return 1
   }
-  mv -f "$_tid_tmp" "$_tid_file" || {
+  specter_atomic_copy "$_tid_tmp" "$_tid_file" || {
     rm -f "$_tid_tmp"
     unset _tid_file _tid_add _tid_tmp
     return 1
   }
+  rm -f "$_tid_tmp"
   unset _tid_file _tid_add _tid_tmp
 }
 
@@ -106,4 +108,3 @@ _ksm_wait_file() {
   unset _kwf_file _kwf_tries _kwf_i
   return $_kwf_rc
 }
-

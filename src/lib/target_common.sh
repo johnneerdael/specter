@@ -56,6 +56,10 @@ _merge_cleanup() {
 _merge_load_existing() {
   ksm_read_targets_raw > "$_TMP_TARGET" 2>/dev/null || : > "$_TMP_TARGET"
   ksm_read_targets > "$_TMP_EXIST" 2>/dev/null || : > "$_TMP_EXIST"
+  if [ ! -s "$_TMP_TARGET" ]; then
+    for _seed_entry in $FIXED_TARGETS; do _append_missing "$_seed_entry"; done
+    unset _seed_entry
+  fi
 }
 
 _normalize_pkg() {

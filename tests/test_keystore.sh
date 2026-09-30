@@ -42,7 +42,7 @@ source_libs
 mk_module tricky_store "Tricky Store"
 mk_module oh_my_keymint "OhMyKeymint"
 detect_keystore_manager
-assert_eq "detect: ts+omk -> trickystore" "trickystore" "$KSM"
+assert_eq "detect: ts+omk -> ambiguous" "none" "$KSM"
 
 bootstrap
 source_libs
@@ -50,7 +50,7 @@ mk_module tricky_store "Tricky Store"
 mk_module teesim "TEESimulator"
 mkdir -p "$TEESIM_DIR"
 detect_keystore_manager
-assert_eq "detect: ts+teesim -> teesim" "teesim" "$KSM"
+assert_eq "detect: ts+teesim -> ambiguous" "none" "$KSM"
 
 bootstrap
 source_libs
@@ -67,9 +67,9 @@ mk_module tricky_store "Tricky Store"
 mk_module teesim "TEESimulator"
 mkdir -p "$TEESIM_DIR"
 ksm_enforce_singleton >/dev/null
-assert_file_exists "enforce: disables loser" "$MODULES_BASE/tricky_store/disable"
+assert_file_not_exists "enforce: never disables another backend" "$MODULES_BASE/tricky_store/disable"
 detect_keystore_manager
-assert_eq "enforce: winner teesim" "teesim" "$KSM"
+assert_eq "enforce: ambiguity retained" "none" "$KSM"
 
 bootstrap
 source_libs
@@ -112,9 +112,9 @@ _scoop_out=$(_toml_read_scoop "$_toml_file")
 assert_contains "scoop write: new app" "$_scoop_out" "com.new.app"
 assert_not_contains "scoop write: old gone" "$_scoop_out" "com.google.android.gms"
 assert_contains "scoop write: siblings kept" "$(cat "$_toml_file")" "[filter]"
-_inode_before=$(stat -c %i "$_toml_file")
+_inode_before=$(file_inode "$_toml_file")
 printf 'com.new.app\n' | _toml_write_scoop "$_toml_file"
-assert_eq "scoop write: in-place inode" "$_inode_before" "$(stat -c %i "$_toml_file")"
+assert_ne "offline scoop write: atomic inode replacement" "$_inode_before" "$(file_inode "$_toml_file")"
 
 bootstrap
 source_libs
@@ -139,9 +139,9 @@ _toml_set_trust_key "$_cfg_toml" security_patch '"2026-06-05"'
 assert_contains "trust: replaced" "$(cat "$_cfg_toml")" 'security_patch = "2026-06-05"'
 assert_contains "trust: sibling kept" "$(cat "$_cfg_toml")" "os_version = 17"
 assert_contains "trust: other section kept" "$(cat "$_cfg_toml")" "[device]"
-_inode_trust=$(stat -c %i "$_cfg_toml")
+_inode_trust=$(file_inode "$_cfg_toml")
 _toml_set_trust_key "$_cfg_toml" security_patch '"2026-06-05"'
-assert_eq "trust: in-place inode" "$_inode_trust" "$(stat -c %i "$_cfg_toml")"
+assert_ne "offline trust write: atomic inode replacement" "$_inode_trust" "$(file_inode "$_cfg_toml")"
 
 bootstrap
 source_libs
@@ -182,11 +182,11 @@ security_patch = "auto"
 EOF
 detect_keystore_manager
 ksm_set_security_patch "2026-06-05"
-assert_contains "patch toml: set" "$(cat "$KSM_CONFIG")" 'security_patch = "2026-06-05"'
-assert_eq "patch get toml" "2026-06-05" "$(ksm_get_security_patch)"
+assert_contains "patch toml: native value retained" "$(cat "$KSM_CONFIG")" 'security_patch = "auto"'
+assert_eq "patch get toml retained" "auto" "$(ksm_get_security_patch)"
 assert_file_not_exists "patch toml: no restart" "$OMK_RESTART_DIR/restart.keymint"
 ksm_set_trust_field os_version auto
-assert_contains "trust field: auto quoted" "$(cat "$KSM_CONFIG")" 'os_version = "auto"'
+assert_contains "unvalidated trust edit refused" "$(cat "$KSM_CONFIG")" 'os_version = 17'
 
 # ---------- first boot: apply when unset vs preserve when set ----------
 bootstrap
@@ -234,16 +234,16 @@ EOF
 detect_keystore_manager
 assert_eq "detect: format ini" "ini" "$KSM_FORMAT"
 assert_contains "ini read: package" "$(ksm_read_targets)" "com.google.android.gms"
-_inode_ini=$(stat -c %i "$KSM_CONFIG")
+_inode_ini=$(file_inode "$KSM_CONFIG")
 printf 'com.google.android.gms!\ncom.new.app\n' > "$TEST_ROOT/staging_ini.txt"
 ksm_commit_targets "$TEST_ROOT/staging_ini.txt"
 _ini_out=$(cat "$KSM_CONFIG")
-assert_contains "ini write: new app" "$_ini_out" "com.new.app"
-assert_not_contains "ini write: dropped wallet" "$_ini_out" "com.example.wallet"
+assert_not_contains "ini write refused: new app absent" "$_ini_out" "com.new.app"
+assert_contains "ini write refused: wallet retained" "$_ini_out" "com.example.wallet"
 assert_contains "ini write: policy kept" "$_ini_out" "[com.google.android.gms]"
-assert_eq "ini write: in-place inode" "$_inode_ini" "$(stat -c %i "$KSM_CONFIG")"
+assert_eq "ini write: in-place inode" "$_inode_ini" "$(file_inode "$KSM_CONFIG")"
 ksm_set_security_patch "2026-06-05"
-assert_eq "ini patch get" "2026-06-05" "$(ksm_get_security_patch)"
+assert_eq "ini patch retained" "no" "$(ksm_get_security_patch)"
 
 # ---------- targets (JM): txt preserves suffixes; toml strips into scoop ----------
 bootstrap
@@ -294,9 +294,9 @@ com.other.app?
 EOF
 ksm_commit_targets "$_kt_staging2"
 _kt_out2=$(ksm_read_targets)
-assert_contains "targets toml: new.app" "$_kt_out2" "com.new.app"
+assert_not_contains "targets toml refused: new.app absent" "$_kt_out2" "com.new.app"
 assert_not_contains "targets toml: suffix stripped" "$_kt_out2" "com.new.app!"
-assert_contains "targets toml: other.app" "$_kt_out2" "com.other.app"
+assert_not_contains "targets toml refused: other.app absent" "$_kt_out2" "com.other.app"
 assert_contains "targets toml: siblings kept" "$(cat "$OMK_INJECTOR")" "[main]"
 assert_file_not_exists "targets toml: no restart" "$OMK_RESTART_DIR/restart.keymint"
 
@@ -352,7 +352,7 @@ assert_contains "teesim: other profile mode kept" "$(cat "$TEESIM_CONFIG")" '"mo
 
 printf '<AndroidAttestation/>\n' > "$TEST_ROOT/teesim_kb.xml"
 ksm_install_keybox "$TEST_ROOT/teesim_kb.xml" copy
-assert_contains "teesim: keybox" "$(cat "$TEESIM_KEYBOX")" "<AndroidAttestation/>"
+assert_file_not_exists "teesim: unvalidated keybox never installed" "$TEESIM_KEYBOX"
 
 mkdir -p "$MODULES_BASE/teesim"
 cat > "$MODULES_BASE/teesim/config.default.json" << 'EOF'
@@ -372,10 +372,12 @@ cat > "$MODULES_BASE/teesim/config.default.json" << 'EOF'
 }
 EOF
 rm -f "$TEESIM_CONFIG"
-_teesim_repair_config "$TEESIM_CONFIG"
-assert_contains "teesim repair: missing→seed" "$(ksm_read_targets)" "com.google.android.gms"
+_teesim_load_ir "$TEESIM_CONFIG" "$TEST_ROOT/seed.ir"
+assert_contains "pure load: missing source seeded in IR" "$(cat "$TEST_ROOT/seed.ir")" "P default"
+assert_file_not_exists "pure load never creates missing source" "$TEESIM_CONFIG"
 printf '%s\n' '{"version":1,"profiles":{"other":{"keybox":"keybox.xml","mode":"generation","patchLevel":{"system":"today","vendor":"YYYY-MM-05","boot":"YYYY-MM-05"},"osVersion":"","brand":"","device":"","product":"","manufacturer":"","model":"","serial":"","imei":"","meid":"","imei2":"","apps":["com.example.app"]}}}' > "$TEESIM_CONFIG"
-_teesim_repair_config "$TEESIM_CONFIG"
+_teesim_load_ir "$TEESIM_CONFIG" "$TEST_ROOT/seed.ir"
+_teesim_write_ir "$TEESIM_CONFIG" "$TEST_ROOT/seed.ir"
 assert_contains "teesim repair: default restored" "$(cat "$TEESIM_CONFIG")" '"default"'
 assert_contains "teesim repair: other kept" "$(cat "$TEESIM_CONFIG")" '"other"'
 assert_contains "teesim repair: seed apps" "$(ksm_read_targets)" "com.android.vending"
@@ -389,11 +391,11 @@ printf '<old/>\n' > "$OMK_KEYBOX"
 detect_keystore_manager
 _kb_src="$TEST_ROOT/src_keybox.xml"
 printf '<AndroidAttestation/>\n' > "$_kb_src"
-_kb_inode=$(stat -c %i "$KSM_KEYBOX")
+_kb_inode=$(file_inode "$KSM_KEYBOX")
 ksm_install_keybox "$_kb_src" copy
-assert_contains "keybox: content" "$(cat "$KSM_KEYBOX")" "<AndroidAttestation/>"
+assert_contains "keybox: original retained" "$(cat "$KSM_KEYBOX")" "<old/>"
 assert_file_exists "keybox: src kept on copy" "$_kb_src"
-assert_eq "keybox: in-place inode" "$_kb_inode" "$(stat -c %i "$KSM_KEYBOX")"
+assert_eq "keybox: in-place inode" "$_kb_inode" "$(file_inode "$KSM_KEYBOX")"
 assert_file_not_exists "keybox: no restart" "$OMK_RESTART_DIR/restart.keymint"
 
 bootstrap
@@ -561,7 +563,7 @@ source_libs
 mkdir -p "$SPECTER_DIR/.lock"
 ln -s "9999999" "$SPECTER_DIR/.lock/targets"
 ksm_lock_targets
-assert_eq "lock: dead pid stolen" "$$" "$(readlink "$SPECTER_DIR/.lock/targets")"
+assert_eq "legacy lock never stolen" "9999999" "$(readlink "$SPECTER_DIR/.lock/targets")"
 
 # Live holder so we enter the cmdline read. A tr that sees /proc/*/cmdline
 # on stdin (the old redirect) leaves a marker; cat | tr feeds it a pipe.
@@ -584,7 +586,7 @@ ln -s "$_holder" "$SPECTER_DIR/.lock/targets"
 ksm_lock_targets
 kill "$_holder" 2>/dev/null || true
 wait "$_holder" 2>/dev/null || true
-assert_eq "lock: live non-target stolen" "$$" "$(readlink "$SPECTER_DIR/.lock/targets")"
+assert_eq "live unrelated lock never stolen" "$_holder" "$(readlink "$SPECTER_DIR/.lock/targets")"
 assert_file_not_exists "lock: tr stdin is not cmdline" "$TEST_ROOT/tr_direct_cmdline"
 _redir=$(grep -n "tr '\\\\0' ' ' <" "$REPO_ROOT/src/lib/keystore.sh" "$REPO_ROOT/src/lib/scheduler.sh" || true)
 assert_eq "lock: no tr redirect from cmdline" "" "$_redir"
