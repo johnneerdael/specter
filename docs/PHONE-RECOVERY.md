@@ -76,16 +76,19 @@ Do this only after the baseline is stable and the checkpoint has been reviewed. 
 
 **Before installing or taking the first Specter reboot:** the assistant must recheck and privately preserve the existing Specter configuration (or record its absence), including legacy settings. Every mutating preference must be absent or `0`: property/boot spoofing, ROM/PIF properties, GMS stopping/clearing, targeting, patch/fingerprint/keybox changes, automation, scheduler, hot-install and boot-hash changes. They were absent at the latest inspection, but old explicit preferences can survive an installation. If any is enabled, stop for targeted, reviewed preparation; do not install and discover it after boot.
 
-1. On the Mac, verify the ZIP and copy it to Downloads:
+1. Use the actual module ZIP, not GitHub's download wrapper. The Actions download can contain a second ZIP with the same filename; the outer ZIP is **not a Magisk module**. Extract it once. A module must contain `module.prop` at its top level, not just another ZIP. The verified inner archive has now been saved in your Mac's Downloads as **`Specter-MAGISK-v1.5.0-ge79ffbd.zip`**; the original wrapper is retained.
+
+   On the Mac, verify that distinctly named ZIP and copy it to the phone:
 
    ```sh
-   shasum -a 256 /Volumes/EXT-SSD1/Oneplus/Specter-Validated-e79ffbd/Specter-v1.5.0-ge79ffbd.zip
-   adb push /Volumes/EXT-SSD1/Oneplus/Specter-Validated-e79ffbd/Specter-v1.5.0-ge79ffbd.zip /sdcard/Download/
+   shasum -a 256 "$HOME/Downloads/Specter-MAGISK-v1.5.0-ge79ffbd.zip"
+   unzip -p "$HOME/Downloads/Specter-MAGISK-v1.5.0-ge79ffbd.zip" module.prop
+   adb push "$HOME/Downloads/Specter-MAGISK-v1.5.0-ge79ffbd.zip" /sdcard/Download/
    ```
 
-   Expected SHA-256: `c009756f2c19a952c2a774ff5c625de67fb25c2033fce8ff16e124099bb88b34`. If different, do not install. This exact commit passed [fork Actions validation](https://github.com/johnneerdael/specter/actions/runs/36743791402); that validates code and packaging, not payments.
+   Expected SHA-256: `c009756f2c19a952c2a774ff5c625de67fb25c2033fce8ff16e124099bb88b34`. The second command must print `id=specter` and `version=v1.5.0-ge79ffbd`. If the hash differs or `module.prop` is missing, do not install. The wrapper has a different digest beginning `5b69ab37` and is not installable. This exact module commit passed [fork Actions validation](https://github.com/johnneerdael/specter/actions/runs/36743791402); that validates code and packaging, not payments or a successful phone install.
 
-2. Open **Magisk → Modules → Install from storage**. Select that ZIP. Read the result; on an error, stop without rebooting. After a successful install, restart once and unlock with your PIN. Do not replace module files over ADB or hot-apply.
+2. Open **Magisk → Modules → Install from storage**. Select **`Specter-MAGISK-v1.5.0-ge79ffbd.zip`**, not the earlier same-named wrapper or an upstream release. Read the result; on an error, stop without rebooting. After a successful install, restart once and unlock with your PIN. Do not replace module files over ADB or hot-apply.
 
 3. Open the already installed **KsuWebUIStandalone → Specter**. No additional WebUI APK or Zygisk module is needed. Confirm Specter version `v1.5.0-ge79ffbd` and backend **JingMatrix TEESimulator**. If absent/ambiguous, stop.
 
