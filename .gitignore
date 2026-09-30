@@ -10,6 +10,7 @@ config.json
 /docs/*
 !/docs/COMPATIBILITY.md
 !/docs/HARDENING.md
+!/docs/PHONE-RECOVERY.md
 web/note_modules
 web/The best setup.md
 web/docs/.vitepress/dist/

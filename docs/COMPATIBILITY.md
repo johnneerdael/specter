@@ -4,7 +4,7 @@ Reviewed 2026-09-30. This is a preservation-first recommendation, **not a guaran
 
 ## Recommendation for this OnePlus
 
-Keep the existing JingMatrix TEESimulator v4.0 and exactly one existing PIF initially; use their native interfaces. Leave Specter property handling, fingerprint fetching, automatic targeting, keybox updates, scheduler and GMS management off. Do not add HMA unless a specific app needs it. Preserve its existing export and restrict scope manually; do not scope Settings, the launcher or provisioning services just to hide unrelated apps.
+Follow the [phone-specific recovery checklist](PHONE-RECOVERY.md) first. Keep the existing JingMatrix TEESimulator v4.0 and Zygisk Next initially. On this phone, `playintegrityfix` is **disabled Integrity Box**, not an enabled standalone PIF: leave it disabled until a separately reviewed replacement. A working existing PIF on another device should normally be retained, not stacked with another. Use backend/PIF native interfaces. Leave Specter property handling, fingerprint fetching, automatic targeting, keybox updates, scheduler and GMS management off. Do not add HMA unless a specific app needs it. Preserve its existing export and restrict scope manually; do not scope Settings, the launcher or provisioning services just to hide unrelated apps.
 
 This recommendation minimizes changes. Device diagnostics found TEE RKP certificate/CSR failure while StrongBox succeeded. They **did not establish that Integrity Box caused the HAL failure**, nor that changing the Specter manager or backend fixes it. No backend/PIF combination has been payment-validated on this phone. Do not clear RKPD/keystore data, delete simulator key stores or change cryptographic derivation parameters to test a hypothesis.
 

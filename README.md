@@ -4,6 +4,8 @@ A safety-hardened fork of [dpejoh/Specter](https://github.com/dpejoh/specter). T
 
 [Compatibility, supported backend/PIF differences and explicit recommendations](docs/COMPATIBILITY.md) · [Hardening contract and unsupported operations](docs/HARDENING.md)
 
+[OnePlus recovery checklist: what to keep, disable, add and do next](docs/PHONE-RECOVERY.md). Start there for the inspected phone; it currently has Integrity Box disabled, not an active standalone PIF.
+
 ## Safe starting point
 
 1. Verify private backups and app-native recovery options before modifying the phone. Root backups cannot guarantee migration of bank sessions or hardware-bound keys.
